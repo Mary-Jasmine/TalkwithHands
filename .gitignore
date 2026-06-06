@@ -60,3 +60,6 @@ uploads/
 
 # Firebase
 .firebase/
+
+# Builds
+dist/
