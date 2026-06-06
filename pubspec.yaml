@@ -1,0 +1,81 @@
+name: sign_language_app
+description: Sign Language to Text and Speech — native mobile app
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Camera
+  camera: ^0.11.4
+  camera_android: ^0.10.10+16
+
+  # MediaPipe hand landmarks
+  hand_landmarker: ^2.2.0
+  tflite_flutter: ^0.12.1
+  path_provider: ^2.1.2
+  google_fonts: ^6.3.3
+  flutter_svg: ^2.0.0
+
+  # Face mesh overlay
+ # google_mlkit_face_mesh_detection: ^0.4.2
+
+  # Text-to-speech
+  flutter_tts: ^4.0.2
+
+  # Permissions
+  permission_handler: ^11.3.1
+
+  cupertino_icons: ^1.0.6
+  firebase_core: ^4.7.0
+  dio: ^5.8.0+1
+  flutter_secure_storage: ^9.2.4
+  google_sign_in: ^6.3.0
+  flutter_facebook_auth: ^7.1.1
+  flutter_dotenv: ^6.0.0
+  video_player: ^2.10.0
+  photo_view: ^0.15.0  
+  webview_flutter: ^4.10.0
+  image_picker: ^1.1.2
+    
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - web/icons/Icon-192.png
+    - assets/images/app_logo.png
+    - assets/images/home_design.png
+    - assets/images/guess_asl_icon.png
+    - assets/images/PPS.jpg
+    - assets/images/alphabets/
+    - assets/images/numbers/
+    # Video-heavy folders are excluded from the share APK to keep the build small.
+    # Use backend-hosted videos for tutorial playback in the distributed app.
+   # Video-heavy folders are excluded from the share APK to keep the build small.
+    # Use backend-hosted videos for tutorial playback in the distributed app.
+    - assets/ml/
+    - assets/three.min.js
+    - assets/images/hand.png
+    - assets/guess_asl/
+    - lib/.env
+    - assets/ml/sign_sequence_classifier.tflite
+    - assets/ml/sequence_labels.txt
+    - assets/images/characters.png
+    - assets/images/charwavenobg.png
+    - assets/images/home_design.png
+    - assets/images/home_bg_clean.png
+    - assets/images/renz.jpg
+    - assets/images/jade.jpg
+    - assets/images/derama.jpg
+    - assets/images/ecal.png
+    - assets/images/diana.jpg
+    - assets/images/mary.jpg

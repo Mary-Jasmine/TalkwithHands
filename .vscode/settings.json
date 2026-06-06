@@ -1,0 +1,14 @@
+{
+  "dart.env": {
+    "JAVA_HOME": "C:\\Program Files\\Android\\Android Studio\\jbr",
+    "FLUTTER_SUPPRESS_ANALYTICS": "true"
+  },
+  "dart.flutterSdkPath": "C:\\flutter",
+  "java.configuration.updateBuildConfiguration": "interactive",
+  "java.import.gradle.java.home": "C:\\Program Files\\Android\\Android Studio\\jbr",
+  "java.jdt.ls.java.home": "C:\\Program Files\\Android\\Android Studio\\jbr",
+  "terminal.integrated.env.windows": {
+    "JAVA_HOME": "C:\\Program Files\\Android\\Android Studio\\jbr",
+    "FLUTTER_SUPPRESS_ANALYTICS": "true"
+  }
+}
