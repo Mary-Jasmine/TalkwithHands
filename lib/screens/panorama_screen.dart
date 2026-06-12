@@ -139,24 +139,31 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
   }
   .hotspot {
     position: absolute; left: 0; top: 0; transform: translate(-50%, -50%);
-    min-width: 66px; padding: 4px 8px 5px; border-radius: 999px;
-    border: 2px solid rgba(255,255,255,0.96);
-    background: rgba(0, 229, 204, 0.92); color: #071A3F;
-    font-family: Arial, sans-serif; font-size: 11px; font-weight: 800;
-    text-align: center; cursor: pointer; pointer-events: auto;
-    box-shadow: 0 8px 20px rgba(0,0,0,0.42); user-select: none;
-    transition: opacity 120ms ease, transform 120ms ease;
+    width: 48px;
+    height: 45px; border-radius: 50%;
+    border: 2.5px solid rgba(255,255,255,0.85);
+    border-shadow: grey 10px 0px 0px 10px;
+    background: transparent;
+    cursor: pointer; pointer-events: auto;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.25); user-select: none;
+    transition: opacity 120ms ease, transform 120ms ease, background 120ms ease;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0;
   }
   .hotspot::after {
-    content: ''; display: block; width: 28px; height: 28px; margin: 3px auto 0;
-    border-radius: 50%; background: white;
-    box-shadow: inset 0 0 0 4px rgba(0, 229, 204, 0.95);
+    content: '';
+    width: 0; height: 0;
+    border-top: 10px solid transparent;
+    border-bottom: 10px solid transparent;
+    border-left: 18px solid rgba(255,255,255,0.9);
+    margin-left: 4px;
   }
   .hotspot::before {
-    content: ''; position: absolute; left: 50%; bottom: 16px;
-    transform: translateX(-35%); width: 0; height: 0; z-index: 1;
-    border-top: 6px solid transparent; border-bottom: 6px solid transparent;
-    border-left: 9px solid #071A3F;
+    display: none;
+  }
+  .hotspot:hover {
+    background: rgba(255,255,255,0.15);
+    transform: translate(-50%, -50%) scale(1.1);
   }
 </style>
 </head>

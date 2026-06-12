@@ -160,12 +160,12 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
   static const int _holdNeed = 8;
   // PERF FIX 1: Process every 3rd frame instead of every 2nd.
   // At 30fps this means ~10 detections/sec — more than enough, less CPU load.
-  static const int _processEveryNFrames = 6;
+  static const int _processEveryNFrames = 8;
   // PERF FIX 2: Minimum 80ms between inferences (~12fps cap).
   // Prevents MediaPipe from stacking calls on slow devices.
-  static const Duration _minInferenceGap = Duration(milliseconds: 150);
+  static const Duration _minInferenceGap = Duration(milliseconds: 220);
   // PERF FIX 3: UI refreshes at most every 80ms to avoid setState storms.
-  static const Duration _minUiGap = Duration(milliseconds: 100);
+  static const Duration _minUiGap = Duration(milliseconds: 160);
   // PERF FIX 4: Increase smoothing factor slightly (0.45 → 0.35).
   // Lower value = more weight on previous frame = less jitter, less compute.
   static const double _landmarkSmoothing = 0.35;

@@ -152,13 +152,13 @@ class _NumbersScreenState extends State<NumbersScreen> {
                 ),
               ),
               const SizedBox(height: 10),
-              SizedBox(
-                height: 130,
+              const SizedBox(
+                height: 170,
                 child: Stack(
                   clipBehavior: Clip.none,
                   alignment: Alignment.center,
                   children: [
-                    const Positioned(
+                    Positioned(
                       left: 10,
                       top: 8,
                       child: _StickerNumber(
@@ -168,7 +168,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
                         size: 38,
                       ),
                     ),
-                    const Positioned(
+                    Positioned(
                       left: 52,
                       bottom: 12,
                       child: _StickerNumber(
@@ -178,7 +178,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
                         size: 32,
                       ),
                     ),
-                    const Positioned(
+                    Positioned(
                       right: 52,
                       top: 10,
                       child: _StickerNumber(
@@ -188,7 +188,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
                         size: 30,
                       ),
                     ),
-                    const Positioned(
+                    Positioned(
                       right: 10,
                       bottom: 14,
                       child: _StickerNumber(
@@ -198,24 +198,17 @@ class _NumbersScreenState extends State<NumbersScreen> {
                         size: 34,
                       ),
                     ),
-                    const Positioned(
+                    Positioned(
                       left: 38,
                       top: 6,
                       child: _FloatingEmoji(emoji: '✨', size: 16),
                     ),
-                    const Positioned(
+                    Positioned(
                       right: 38,
                       bottom: 8,
                       child: _FloatingEmoji(emoji: '💫', size: 14),
                     ),
-                    Center(
-                      child: Image.asset(
-                        'assets/images/characters.png',
-                        height: 130,
-                        fit: BoxFit.contain,
-                        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                      ),
-                    ),
+                    _AvatarWithBubble(),
                   ],
                 ),
               ),
@@ -274,7 +267,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
                             padding: const EdgeInsets.all(10),
                             gridDelegate:
                                 const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 4,
+                              crossAxisCount: 3,
                               crossAxisSpacing: 8,
                               mainAxisSpacing: 8,
                               childAspectRatio: 0.78,
@@ -388,6 +381,155 @@ class _FloatingEmoji extends StatelessWidget {
       Text(emoji, style: TextStyle(fontSize: size));
 }
 
+// ── Avatar with animated speech bubble ───────────────────────────────────────
+class _AvatarWithBubble extends StatefulWidget {
+  const _AvatarWithBubble();
+
+  @override
+  State<_AvatarWithBubble> createState() => _AvatarWithBubbleState();
+}
+
+class _AvatarWithBubbleState extends State<_AvatarWithBubble>
+    with SingleTickerProviderStateMixin {
+  static const _messages = [
+    "Let's count! 🔢",
+    "1, 2, 3... Go! 🚀",
+    "Sign along! 🤟",
+    "You're doing great! ⭐",
+    "Numbers are fun! 🎉",
+    "Keep practicing! 💪",
+  ];
+
+  int _msgIndex = 0;
+  final bool _bubbleVisible = true;
+  late final AnimationController _ctrl;
+  late final Animation<double> _scale;
+  late final Animation<double> _opacity;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 350),
+    );
+    _scale = CurvedAnimation(parent: _ctrl, curve: Curves.elasticOut);
+    _opacity = CurvedAnimation(parent: _ctrl, curve: Curves.easeIn);
+    _ctrl.forward();
+    _scheduleCycle();
+  }
+
+  void _scheduleCycle() {
+    Future.delayed(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      // fade out
+      _ctrl.reverse().then((_) {
+        if (!mounted) return;
+        setState(() {
+          _msgIndex = (_msgIndex + 1) % _messages.length;
+        });
+        _ctrl.forward();
+        _scheduleCycle();
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: SizedBox(
+        height: 170,
+        child: Stack(
+          clipBehavior: Clip.none,
+          alignment: Alignment.bottomCenter,
+          children: [
+            // speech bubble
+            Positioned(
+              top: 0,
+              child: AnimatedBuilder(
+                animation: _ctrl,
+                builder: (_, child) => Opacity(
+                  opacity: _opacity.value,
+                  child: Transform.scale(
+                    scale: _scale.value,
+                    alignment: Alignment.bottomCenter,
+                    child: child,
+                  ),
+                ),
+                child: CustomPaint(
+                  painter: _BubblePainter(),
+                  child: Container(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                    constraints: const BoxConstraints(maxWidth: 160),
+                    child: Text(
+                      _messages[_msgIndex],
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF1A3A6B),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            // avatar
+            Positioned(
+              bottom: 0,
+              child: Image.asset(
+                'assets/images/characters.png',
+                height: 110,
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BubblePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+    final borderPaint = Paint()
+      ..color = const Color(0xFFBFD7FF)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+
+    final rr = RRect.fromRectAndRadius(
+      Rect.fromLTWH(0, 0, size.width, size.height - 10),
+      const Radius.circular(14),
+    );
+
+    // tail pointing down
+    final tail = Path()
+      ..moveTo(size.width / 2 - 8, size.height - 10)
+      ..lineTo(size.width / 2, size.height)
+      ..lineTo(size.width / 2 + 8, size.height - 10)
+      ..close();
+
+    canvas.drawRRect(rr, paint);
+    canvas.drawPath(tail, paint);
+    canvas.drawRRect(rr, borderPaint);
+    canvas.drawPath(tail, borderPaint);
+  }
+
+  @override
+  bool shouldRepaint(_) => false;
+}
+
 // ── Sticker number ────────────────────────────────────────────────────────────
 class _StickerNumber extends StatelessWidget {
   final String number;
@@ -494,7 +636,7 @@ class _SearchField extends StatelessWidget {
                 border: InputBorder.none,
                 isDense: true,
                 contentPadding:
-                    EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                    EdgeInsets.symmetric(horizontal: 10, vertical: 7),
               ),
             ),
           ),
@@ -564,19 +706,22 @@ class _NumberCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
-          // ── image area with light grey border ──
+          // ── image area with light grey border — tappable ──
           Expanded(
-            child: Container(
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: const Color(0xFFFDF9F9),
-                border: Border.all(
-                  color: const Color(0xFFD6D6D6), // light grey
-                  width: 1.2,
+            child: GestureDetector(
+              onTap: onView,
+              child: Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFDF9F9),
+                  border: Border.all(
+                    color: const Color(0xFFD6D6D6),
+                    width: 1.2,
+                  ),
                 ),
+                padding: const EdgeInsets.all(6),
+                child: _NumberImage(sign: sign, fit: BoxFit.contain),
               ),
-              padding: const EdgeInsets.all(6),
-              child: _NumberImage(sign: sign, fit: BoxFit.contain),
             ),
           ),
           // ── footer ──
@@ -601,20 +746,26 @@ class _NumberCard extends StatelessWidget {
                 GestureDetector(
                   onTap: onView,
                   child: Container(
-                    width: 48,
-                    height: 16,
-                    alignment: Alignment.center,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
                     decoration: BoxDecoration(
                       color: kGreen,
                       borderRadius: BorderRadius.circular(999),
                     ),
-                    child: const Text(
-                      'View',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 9,
-                        fontWeight: FontWeight.w800,
-                      ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.visibility_rounded,
+                            color: Colors.white, size: 9),
+                        SizedBox(width: 3),
+                        Text(
+                          'View',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),

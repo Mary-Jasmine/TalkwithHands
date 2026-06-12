@@ -67,6 +67,7 @@ class _DataCollectionScreenState extends State<DataCollectionScreen>
   bool _processing = false;
   int _frameCounter = 0;
   DateTime _lastInferenceAt = DateTime.fromMillisecondsSinceEpoch(0);
+  DateTime _lastUiUpdateAt = DateTime.fromMillisecondsSinceEpoch(0);
 
   // MediaPipe
   late final mp_hand.HandLandmarkerPlugin _handLandmarker;
@@ -233,9 +234,9 @@ class _DataCollectionScreenState extends State<DataCollectionScreen>
   void _onFrame(CameraImage image) {
     if (_processing || !_cameraInitialized) return;
     _frameCounter++;
-    if (_frameCounter % 4 != 0) return;
+    if (_frameCounter % 8 != 0) return;
     final now = DateTime.now();
-    if (now.difference(_lastInferenceAt) < const Duration(milliseconds: 150)) return;
+    if (now.difference(_lastInferenceAt) < const Duration(milliseconds: 220)) return;
     _lastInferenceAt = now;
     _processFrame(image, now);
   }
@@ -257,7 +258,13 @@ class _DataCollectionScreenState extends State<DataCollectionScreen>
       }
 
       if (!mounted) return;
-      setState(() => _handLandmarks = landmarks);
+      final handPresenceChanged = (landmarks == null) != (_handLandmarks == null);
+      _handLandmarks = landmarks;
+      if (handPresenceChanged ||
+          now.difference(_lastUiUpdateAt) >= const Duration(milliseconds: 180)) {
+        _lastUiUpdateAt = now;
+        setState(() {});
+      }
 
       if (landmarks == null) return;
 
@@ -275,7 +282,7 @@ class _DataCollectionScreenState extends State<DataCollectionScreen>
           now.difference(_lastSeqFrame).inMilliseconds >= kSequenceFrameMs) {
         _lastSeqFrame = now;
         _seqBuffer.add(List<HandLandmark>.from(landmarks));
-        setState(() {}); // update progress indicator
+        if (mounted) setState(() {}); // update progress indicator
 
         if (_seqBuffer.length >= kSequenceFrames) {
           _seqRecording = false;

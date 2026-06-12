@@ -215,15 +215,15 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
 
                   // ── Search bar ────────────────────────────────────────────
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
                     child: Row(
                       children: [
                         Expanded(
                           child: Container(
-                            height: 48,
+                            height: 40,
                             decoration: BoxDecoration(
                               color: Colors.white,
-                              borderRadius: BorderRadius.circular(14),
+                              borderRadius: BorderRadius.circular(20),
                               border: Border.all(
                                 color: _showDropdown
                                     ? kVividBlue
@@ -250,15 +250,15 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
                                     controller: _searchController,
                                     focusNode: _searchFocusNode,
                                     style: const TextStyle(
-                                        color: Colors.black87, fontSize: 15),
+                                        color: Colors.black87, fontSize: 14),
                                     decoration: const InputDecoration(
-                                      hintText: 'Search words here',
+                                      hintText: 'Search words here...',
                                       hintStyle:
                                           TextStyle(color: Color(0xFF9DA4AD)),
                                       border: InputBorder.none,
                                       isDense: true,
                                       contentPadding: EdgeInsets.symmetric(
-                                          horizontal: 0, vertical: 14),
+                                          horizontal: 0, vertical: 7),
                                     ),
                                   ),
                                 ),
@@ -286,16 +286,16 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
                         // Practice button
                         Material(
                           color: kGreen,
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(20),
                           child: InkWell(
                             onTap: () {
                               Navigator.of(context).push(MaterialPageRoute(
                                 builder: (_) => const SignDetectorScreen(),
                               ));
                             },
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(20),
                             child: Container(
-                              height: 48,
+                              height: 40,
                               padding:
                                   const EdgeInsets.symmetric(horizontal: 14),
                               alignment: Alignment.center,
@@ -447,7 +447,7 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Padding(
-              padding: EdgeInsets.only(bottom: 12),
+              padding: EdgeInsets.only(bottom: 21, top: 7),
               child: Text(
                 'Categories',
                 style: TextStyle(
@@ -496,11 +496,11 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
   // ── Word list for a selected category ──────────────────────────────────────
   Widget _buildWordList(List<BasicWord> words, String category) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+      padding: const EdgeInsets.fromLTRB(13, 14, 15, 10),
       child: Container(
         width: double.infinity,
         decoration: BoxDecoration(
-          color: const Color.fromARGB(255, 5, 111, 209).withValues(alpha: 0.18),
+          color: const Color.fromARGB(181, 88, 170, 248).withValues(alpha: 0.18),
           borderRadius: BorderRadius.circular(24),
           border: Border.all(
             color:
@@ -520,16 +520,17 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
                 children: [
                   Icon(
                     _categoryIcons[category] ?? Icons.category_outlined,
-                    color: kVividBlue,
+                    color: const Color.fromARGB(255, 14, 0, 137),
                     size: 22,
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 10),
                   Text(
                     category,
                     style: const TextStyle(
                       color: Colors.black87,
                       fontSize: 22,
                       fontWeight: FontWeight.w900,
+                      
                     ),
                   ),
                 ],
@@ -540,8 +541,8 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
               else
                 LayoutBuilder(
                   builder: (context, constraints) {
-                    const spacing = 12.0;
-                    const columns = 2;
+                    const spacing = 9.0;
+                    const columns = 3;
                     final itemWidth =
                         (constraints.maxWidth - spacing * (columns - 1)) /
                             columns;
@@ -551,7 +552,7 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
                       children: words
                           .map((word) => SizedBox(
                                 width: itemWidth,
-                                height: 200,
+                                height: 160,
                                 child: _BasicWordCard(
                                   word: word,
                                   showCategory: false,
@@ -714,7 +715,7 @@ class _CategoryTile extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 4),
               child: Text(
                 label,
-                maxLines: 2,
+                maxLines: 4,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
@@ -762,9 +763,14 @@ class _BasicWordCard extends StatelessWidget {
             border: Border.all(color: const Color(0xFFBFD7FF), width: 1.5),
             boxShadow: const [
               BoxShadow(
-                color: Color(0x14185FA5),
-                blurRadius: 10,
-                offset: Offset(0, 4),
+                color: Color(0x30185FA5),
+                blurRadius: 12,
+                offset: Offset(0, 6),
+              ),
+              BoxShadow(
+                color: Color(0x15000000),
+                blurRadius: 4,
+                offset: Offset(0, 2),
               ),
             ],
           ),
@@ -846,13 +852,6 @@ class _BasicWordCard extends StatelessWidget {
                     const SizedBox(height: 5),
                     Row(
                       children: [
-                        Expanded(
-                          child: _TinyAction(
-                            label: 'View',
-                            icon: Icons.visibility_rounded,
-                            onTap: onView,
-                          ),
-                        ),
                         const SizedBox(width: 6),
                         Expanded(
                           child: _TinyAction(

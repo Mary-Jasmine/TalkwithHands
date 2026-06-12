@@ -33,11 +33,12 @@
     "V",
     "W",
     "X",
-    "Y"
+    "Y",
+    "Z"
   ],
-  "samples": 1675,
-  "train_samples": 1340,
-  "validation_samples": 335,
-  "final_accuracy": 0.9149253964424133,
-  "final_val_accuracy": 0.9701492786407471
+  "samples": 2412,
+  "train_samples": 1930,
+  "validation_samples": 482,
+  "final_accuracy": 0.9233160614967346,
+  "final_val_accuracy": 0.9668049812316895
 }

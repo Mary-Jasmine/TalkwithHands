@@ -197,26 +197,60 @@ class _AlphabetsScreenState extends State<AlphabetsScreen> {
                   clipBehavior: Clip.none,
                   alignment: Alignment.center,
                   children: [
-                    // decorative bubbles / hearts
-                    const Positioned(
-                      left: 18,
-                      top: 10,
-                      child: _FloatingEmoji(emoji: '🤟', size: 32),
-                    ),
-                    const Positioned(
-                      left: 48,
-                      bottom: 18,
-                      child: _FloatingEmoji(emoji: '💙', size: 20),
-                    ),
-                    const Positioned(
-                      right: 22,
+                    // decorative letter stickers
+                  const  Positioned(
+                      left: 15,
                       top: 8,
-                      child: _FloatingEmoji(emoji: '✨', size: 22),
+                      child: _StickerLetter(
+                        letter: 'A',
+                        color: Color.fromARGB(185, 139, 63, 190),
+                        angle: -0.02,
+                        size: 31,
+                        delay: Duration.zero,
+                      ),
                     ),
                     const Positioned(
-                      right: 44,
-                      bottom: 22,
-                      child: _FloatingEmoji(emoji: '🌟', size: 18),
+                      left: 52,
+                      bottom: 12,
+                      child: _StickerLetter(
+                        letter: 'B',
+                        color: Color.fromARGB(190, 224, 49, 122),
+                        angle: 0.12,
+                        size: 32,
+                        delay: Duration(milliseconds: 300),
+                      ),
+                    ),
+                    const Positioned(
+                      right: 52,
+                      top: 10,
+                      child: _StickerLetter(
+                        letter: 'C',
+                        color: Color.fromARGB(192, 240, 176, 0),
+                        angle: 0.15,
+                        size: 30,
+                        delay: Duration(milliseconds: 600),
+                      ),
+                    ),
+                    const Positioned(
+                      right: 10,
+                      bottom: 14,
+                      child: _StickerLetter(
+                        letter: 'D',
+                        color: Color.fromARGB(192, 33, 149, 243),
+                        angle: -0.10,
+                        size: 34,
+                        delay: Duration(milliseconds: 900),
+                      ),
+                    ),
+                    const Positioned(
+                      left: 38,
+                      top: 6,
+                      child: _FloatingEmoji(emoji: '✨', size: 16),
+                    ),
+                    const Positioned(
+                      right: 38,
+                      bottom: 8,
+                      child: _FloatingEmoji(emoji: '💫', size: 14),
                     ),
                     // main characters (placeholder — swap with your asset)
                     Center(
@@ -309,7 +343,7 @@ class _AlphabetsScreenState extends State<AlphabetsScreen> {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(10),
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 4,
+          crossAxisCount: 3,
           crossAxisSpacing: 8,
           mainAxisSpacing: 8,
           childAspectRatio: 0.78,
@@ -400,6 +434,99 @@ class _AlphabetsScreenState extends State<AlphabetsScreen> {
           ),
         );
       },
+    );
+  }
+}
+
+// ── Sticker letter ────────────────────────────────────────────────────────────
+class _StickerLetter extends StatefulWidget {
+  final String letter;
+  final Color color;
+  final double angle;
+  final double size;
+  final Duration delay;
+
+  const _StickerLetter({
+    required this.letter,
+    required this.color,
+    required this.angle,
+    required this.size,
+    this.delay = Duration.zero,
+  });
+
+  @override
+  State<_StickerLetter> createState() => _StickerLetterState();
+}
+
+class _StickerLetterState extends State<_StickerLetter>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _bob;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 5000),
+    );
+    _bob = Tween<double>(begin: 0, end: -10).animate(
+      CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
+    );
+    Future.delayed(widget.delay, () {
+      if (mounted) _ctrl.repeat(reverse: true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final textStyle = TextStyle(
+      fontSize: widget.size,
+      fontWeight: FontWeight.w900,
+      color: widget.color,
+    );
+
+    return AnimatedBuilder(
+      animation: _bob,
+      builder: (_, __) => Transform.translate(
+        offset: Offset(0, _bob.value),
+        child: Transform.rotate(
+          angle: widget.angle,
+          child: Stack(
+            children: [
+              // white glow shadow
+              Text(
+                widget.letter,
+                style: textStyle.copyWith(
+                  foreground: Paint()
+                    ..color = Colors.white.withValues(alpha: 0.8)
+                    ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
+                ),
+              ),
+              // coloured drop shadow
+              Transform.translate(
+                offset: const Offset(3, 3),
+                child: Text(
+                  widget.letter,
+                  style: textStyle.copyWith(
+                    foreground: Paint()
+                      ..color = widget.color.withValues(alpha: 0.4)
+                      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
+                  ),
+                ),
+              ),
+              // actual letter on top
+              Text(widget.letter, style: textStyle),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -517,7 +644,7 @@ class _SearchFieldState extends State<_SearchField> {
                 border: InputBorder.none,
                 isDense: true,
                 contentPadding:
-                    EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                    EdgeInsets.symmetric(horizontal: 10, vertical: 7),
               ),
             ),
           ),
@@ -602,13 +729,16 @@ class _AlphabetCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
-          // image area
+          // image area — tappable
           Expanded(
-            child: Container(
-              width: double.infinity,
-              color: const Color(0xFFF5F8FF),
-              padding: const EdgeInsets.all(6),
-              child: _AlphabetImage(sign: sign, fit: BoxFit.contain),
+            child: GestureDetector(
+              onTap: onView,
+              child: Container(
+                width: double.infinity,
+                color: const Color(0xFFF5F8FF),
+                padding: const EdgeInsets.all(6),
+                child: _AlphabetImage(sign: sign, fit: BoxFit.contain),
+              ),
             ),
           ),
           // footer
@@ -633,20 +763,26 @@ class _AlphabetCard extends StatelessWidget {
                 GestureDetector(
                   onTap: onView,
                   child: Container(
-                    width: 48,
-                    height: 16,
-                    alignment: Alignment.center,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
                     decoration: BoxDecoration(
                       color: kGreen,
                       borderRadius: BorderRadius.circular(999),
                     ),
-                    child: const Text(
-                      'View',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 9,
-                        fontWeight: FontWeight.w800,
-                      ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.visibility_rounded,
+                            color: Colors.white, size: 9),
+                        SizedBox(width: 3),
+                        Text(
+                          'View',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),

@@ -15,30 +15,44 @@
         "label": "Motorcycle",
         "video_asset": "",
         "video_url": "https://drive.usercontent.google.com/download?id=11bvdLim7B0GlQI2fDpnzpUFvBiXlDXHw&export=download&confirm=t",
-        "yaw": -38,
-        "pitch": -8,
+        "yaw": 125,
+        "pitch": -3,
         "size": 1,
         "sort_order": 1
       },
+
       {
-        "id": "bench-bicycle",
-        "key": "bicycle",
-        "label": "Bicycle",
+        "id": "bench-tricycle",
+        "key": "tricycle",
+        "label": "Tricycle",
         "video_asset": "",
         "video_url": "https://drive.usercontent.google.com/download?id=1BlOocJhK83VmZD9PBmtZPq2nWM8NaufB&export=download&confirm=t",
-        "yaw": -55,
-        "pitch": -7,
+        "yaw": 80,
+        "pitch": 7,
         "size": 1,
         "sort_order": 2
       },
+
+      {
+        "id": "bench-tricycle",
+        "key": "tricycle",
+        "label": "Tricycle",
+        "video_asset": "",
+        "video_url": "https://drive.usercontent.google.com/download?id=1BlOocJhK83VmZD9PBmtZPq2nWM8NaufB&export=download&confirm=t",
+        "yaw": 165,
+        "pitch": 7,
+        "size": 1,
+        "sort_order": 2
+      },
+
       {
         "id": "bench-car",
         "key": "car",
         "label": "Car",
         "video_asset": "",
         "video_url": "https://drive.usercontent.google.com/download?id=1IBQYOBLDZFynCaeWK-GqVQA0IjvNqdhv&export=download&confirm=t",
-        "yaw": 45,
-        "pitch": -4,
+        "yaw": 245,
+        "pitch": 15,
         "size": 1,
         "sort_order": 3
       }
