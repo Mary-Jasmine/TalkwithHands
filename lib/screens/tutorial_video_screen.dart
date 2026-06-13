@@ -1,20 +1,25 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 
+import '../services/progress_service.dart';
+import '../services/video_player_service.dart';
 import '../ui/app_shell.dart';
-import '../utils/video_url_utils.dart';
 
 class TutorialVideoScreen extends StatefulWidget {
   final String title;
   final String videoAsset;
   final String videoUrl;
+  final String? activityCategory;
 
   const TutorialVideoScreen({
     super.key,
     required this.title,
     required this.videoAsset,
     this.videoUrl = '',
+    this.activityCategory,
   });
 
   @override
@@ -30,73 +35,50 @@ class _TutorialVideoScreenState extends State<TutorialVideoScreen> {
   Offset _offset = Offset.zero;
   Offset _previousOffset = Offset.zero;
   bool _isFullscreen = false;
+  late final DateTime _sessionStartedAt;
 
   static const List<double> _speeds = [0.5, 1.0, 1.5, 2.0];
 
   @override
   void initState() {
     super.initState();
+    _sessionStartedAt = DateTime.now();
     _initialize();
   }
 
   Future<void> _initialize() async {
-    final errors = <String>[];
+    try {
+      final controller = await VideoPlayerService.createController(
+        sources: VideoPlayerService.buildSources(
+          videoUrl: widget.videoUrl,
+          videoAsset: widget.videoAsset,
+        ),
+        playbackSpeed: _playbackSpeed,
+      );
 
-    for (final source in _videoSources()) {
-      VideoPlayerController? controller;
-      try {
-        controller = source.isNetwork
-            ? VideoPlayerController.networkUrl(Uri.parse(source.value))
-            : VideoPlayerController.asset(source.value);
-        await controller.initialize();
-        await controller.setLooping(false);
-        await controller.setPlaybackSpeed(_playbackSpeed);
-
-        if (!mounted) {
-          await controller.dispose();
-          return;
-        }
-
-        setState(() {
-          _controller = controller;
-          _error = null;
-        });
-        await controller.play();
+      if (!mounted) {
+        await controller.dispose();
         return;
-      } catch (error, stackTrace) {
-        errors.add('${source.label}: $error');
-        debugPrint('Tutorial video failed from ${source.label}: $error');
-        debugPrintStack(stackTrace: stackTrace);
-        await controller?.dispose();
       }
-    }
 
-    if (mounted) {
       setState(() {
-        _error = errors.isEmpty
+        _controller = controller;
+        _error = null;
+      });
+    } on VideoLoadException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = error.errors.isEmpty
             ? 'No tutorial video has been uploaded for this lesson yet.'
             : 'Cannot play this tutorial video.\nPlease restart the backend and try again.';
       });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error =
+            'Cannot play this tutorial video.\nPlease restart the backend and try again.';
+      });
     }
-  }
-
-  List<_VideoSource> _videoSources() {
-    final sources = <_VideoSource>[];
-    final videoUrl = normalizePlayableVideoUrl(widget.videoUrl);
-    final videoAsset = widget.videoAsset.trim();
-    final backendAssetUrl = backendVideoUrl(videoAsset);
-
-    if (videoUrl.isNotEmpty) {
-      sources.add(_VideoSource.network('saved video URL', videoUrl));
-    }
-    if (backendAssetUrl != null) {
-      sources.add(_VideoSource.network('backend asset URL', backendAssetUrl));
-    }
-    if (isBundledVideoAsset(videoAsset)) {
-      sources.add(_VideoSource.asset('bundled asset', videoAsset));
-    }
-
-    return sources;
   }
 
   void _setSpeed(double speed) {
@@ -128,8 +110,26 @@ class _TutorialVideoScreenState extends State<TutorialVideoScreen> {
     setState(() => _isFullscreen = !_isFullscreen);
   }
 
+  Future<void> _recordSessionTime() async {
+    final category = widget.activityCategory;
+    if (category == null || category.isEmpty) return;
+
+    final seconds = DateTime.now().difference(_sessionStartedAt).inSeconds;
+    if (seconds < 3) return;
+
+    try {
+      await ProgressService().recordActivity(
+        category: category,
+        secondsSpent: seconds,
+      );
+    } catch (_) {
+      // Progress sync should never block leaving the lesson.
+    }
+  }
+
   @override
   void dispose() {
+    unawaited(_recordSessionTime());
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
       DeviceOrientation.portraitDown,
@@ -327,26 +327,6 @@ class _TutorialVideoScreenState extends State<TutorialVideoScreen> {
     }
 
     return VideoPlayer(controller);
-  }
-}
-
-class _VideoSource {
-  final String label;
-  final String value;
-  final bool isNetwork;
-
-  const _VideoSource._({
-    required this.label,
-    required this.value,
-    required this.isNetwork,
-  });
-
-  factory _VideoSource.network(String label, String value) {
-    return _VideoSource._(label: label, value: value, isNetwork: true);
-  }
-
-  factory _VideoSource.asset(String label, String value) {
-    return _VideoSource._(label: label, value: value, isNetwork: false);
   }
 }
 

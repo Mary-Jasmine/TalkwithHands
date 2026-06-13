@@ -122,6 +122,14 @@ async function createUser(data) {
     age: null,
     app_feedback: { rating: 0, review: '', updated_at: null },
     avatar_preferences: { character: 'hera', skin_tone: 'default', outfit: 'school' },
+    progress: {
+      learned: { alphabet: [], number: [], basic_word: [] },
+      games_played: 0,
+      seconds_spent: 0,
+      streak_days: 0,
+      last_active_date: null,
+      monthly_events: {},
+    },
     ...data,
     createdAt: new Date().toISOString(),
   };

@@ -8,8 +8,8 @@ import 'package:webview_flutter/webview_flutter.dart';
 import '../models/panorama_scene.dart';
 import '../services/api_config.dart';
 import '../services/panorama_service.dart';
+import '../services/video_player_service.dart';
 import '../ui/app_shell.dart';
-import '../utils/video_url_utils.dart';
 
 class PanoramaScreen extends StatefulWidget {
   final String userName;
@@ -25,6 +25,7 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
   late Future<List<PanoramaScene>> _sceneFuture;
   List<PanoramaScene> _scenes = [];
   int _selectedIndex = 0;
+  bool _viewerMode = false;
 
   String get _baseUrl {
     final baseUrl = ApiConfig.baseUrl;
@@ -58,7 +59,10 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
 
   void _loadPanorama(int index) {
     if (index < 0 || index >= _scenes.length) return;
-    setState(() => _selectedIndex = index);
+    setState(() {
+      _selectedIndex = index;
+      _viewerMode = true;
+    });
     _webViewController.loadHtmlString(_buildHtml(_scenes[index]));
   }
 
@@ -300,6 +304,13 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
     updateHotspots();
   }
   animate();
+
+  // Called from Flutter to rotate camera to a hotspot
+  window.navigateTo = function(yaw, pitch) {
+    autoRotate = false;
+    lon = yaw;
+    lat = -pitch; // pitch is inverted in this coordinate system
+  };
 </script>
 </body>
 </html>
@@ -324,6 +335,7 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
   void _reload() {
     setState(() {
       _selectedIndex = 0;
+      _viewerMode = false;
       _scenes = [];
       _sceneFuture = PanoramaService().listPanoramaScenes();
       _webViewController
@@ -345,14 +357,23 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
           child: Column(
             children: [
               AppTopBar(
-                onBack: () => Navigator.of(context).pop(),
+                onBack: () {
+                  if (_viewerMode) {
+                    setState(() => _viewerMode = false);
+                  } else {
+                    Navigator.of(context).pop();
+                  }
+                },
                 onMenu: () => _scaffoldKey.currentState?.openEndDrawer(),
               ),
-              const Padding(
-                padding: EdgeInsets.only(top: 2, bottom: 12),
+              Padding(
+                padding: const EdgeInsets.only(top: 2, bottom: 12),
                 child: Text(
-                  '360 PICTURES',
-                  style: TextStyle(
+                  _viewerMode && _scenes.isNotEmpty
+                      ? _scenes[_selectedIndex].title.toUpperCase()
+                      : '360 PICTURES',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
                     color: Color(0xFF1500C8),
                     fontSize: 32,
                     fontWeight: FontWeight.w900,
@@ -360,113 +381,183 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
                 ),
               ),
               Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: FutureBuilder<List<PanoramaScene>>(
-                      future: _sceneFuture,
-                      builder: (context, snapshot) {
-                        if (snapshot.connectionState ==
-                            ConnectionState.waiting) {
-                          return const Center(
-                            child:
-                                CircularProgressIndicator(color: Colors.white),
-                          );
-                        }
+                child: FutureBuilder<List<PanoramaScene>>(
+                  future: _sceneFuture,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(
+                        child: CircularProgressIndicator(color: Colors.white),
+                      );
+                    }
 
-                        if (snapshot.hasError) {
-                          return _ErrorState(
-                            message:
-                                'Cannot load 360 pictures. Make sure the backend is running.',
-                            onRetry: _reload,
-                          );
-                        }
+                    if (snapshot.hasError) {
+                      return _ErrorState(
+                        message:
+                            'Cannot load 360 pictures. Make sure the backend is running.',
+                        onRetry: _reload,
+                      );
+                    }
 
-                        final scenes = snapshot.data ?? const [];
-                        if (scenes.isEmpty) {
-                          return _ErrorState(
-                            message: 'No 360 pictures found.',
-                            onRetry: _reload,
-                          );
-                        }
+                    final scenes = snapshot.data ?? const [];
+                    if (scenes.isEmpty) {
+                      return _ErrorState(
+                        message: 'No 360 pictures found.',
+                        onRetry: _reload,
+                      );
+                    }
 
-                        if (_scenes.isEmpty) {
-                          _scenes = scenes;
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            if (mounted) _loadPanorama(_selectedIndex);
-                          });
-                        }
+                    if (_scenes.isEmpty) {
+                      _scenes = scenes;
+                    }
 
-                        return WebViewWidget(controller: _webViewController);
-                      },
-                    ),
-                  ),
+                    if (!_viewerMode) {
+                      return _buildCategoryGrid();
+                    }
+
+                    return _buildViewer();
+                  },
                 ),
               ),
-              const SizedBox(height: 16),
-              if (_scenes.isNotEmpty)
-                SizedBox(
-                  height: 90,
-                  child: ListView.separated(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    scrollDirection: Axis.horizontal,
-                    itemCount: _scenes.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 10),
-                    itemBuilder: (context, index) {
-                      final item = _scenes[index];
-                      final isSelected = index == _selectedIndex;
-                      return GestureDetector(
-                        onTap: () => _loadPanorama(index),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          width: 96,
-                          decoration: BoxDecoration(
-                            color: isSelected ? kAccent : Colors.white24,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: isSelected ? Colors.black : Colors.white38,
-                              width: isSelected ? 2 : 1,
-                            ),
-                          ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                _sceneIcon(item),
-                                color: isSelected ? Colors.black : Colors.white,
-                                size: 28,
-                              ),
-                              const SizedBox(height: 6),
-                              Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 4),
-                                child: Text(
-                                  item.title,
-                                  textAlign: TextAlign.center,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: isSelected
-                                        ? Colors.black
-                                        : Colors.white,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              const SizedBox(height: 16),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  // ── Category landing grid ───────────────────────────────────────────────
+  Widget _buildCategoryGrid() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      child: GridView.builder(
+        physics: const BouncingScrollPhysics(),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          crossAxisSpacing: 14,
+          mainAxisSpacing: 14,
+          childAspectRatio: 1.05,
+        ),
+        itemCount: _scenes.length,
+        itemBuilder: (context, index) {
+          final scene = _scenes[index];
+          return _PanoramaCategoryCard(
+            title: scene.title,
+            imageUrl: _imageUrl(scene),
+            icon: _sceneIcon(scene),
+            highlighted: index == 0,
+            onView: () => _loadPanorama(index),
+          );
+        },
+      ),
+    );
+  }
+
+  // ── Navigate panorama camera to a hotspot (no auto-play — user taps hotspot) ──
+  void _navigateToHotspot(PanoramaHotspot hotspot) {
+    _webViewController.runJavaScript(
+      'window.navigateTo(${hotspot.yaw}, ${hotspot.pitch});',
+    );
+  }
+
+  // ── Words / hotspot list below the 360 viewer ───────────────────────────
+  Widget _buildWordsList(List<PanoramaHotspot> hotspots) {
+    if (hotspots.isEmpty) return const SizedBox.shrink();
+
+    // Deduplicate by label, sorted alphabetically
+    final seen = <String>{};
+    final unique = hotspots
+        .where((h) => seen.add(h.label.toLowerCase()))
+        .toList()
+      ..sort((a, b) => a.label.compareTo(b.label));
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            'Words',
+            textAlign: TextAlign.center,  
+            style: TextStyle(
+              color: Color(0xFF1500C8),
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 8),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              childAspectRatio: 4.5,
+              mainAxisSpacing: 2,
+              crossAxisSpacing: 4,
+            ),
+            itemCount: unique.length,
+            itemBuilder: (context, i) {
+              final hotspot = unique[i];
+              final original = hotspots.firstWhere(
+                (h) => h.label.toLowerCase() == hotspot.label.toLowerCase(),
+              );
+              return InkWell(
+                onTap: () => _navigateToHotspot(original),
+                borderRadius: BorderRadius.circular(6),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.play_circle_outline_rounded,
+                        size: 16,
+                        color: Color(0xFF0E7C8C),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          hotspot.label,
+                          style: const TextStyle(
+                            color: Color(0xFF0E3D44),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── 360 viewer with thumbnail strip ─────────────────────────────────────
+  Widget _buildViewer() {
+    final currentHotspots = _scenes.isNotEmpty ? _scenes[_selectedIndex].hotspots : <PanoramaHotspot>[];
+
+    return Column(
+      children: [
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: WebViewWidget(controller: _webViewController),
+            ),
+          ),
+        ),
+        _buildWordsList(currentHotspots),
+        const SizedBox(height: 16),
+      ],
     );
   }
 }
@@ -501,60 +592,36 @@ class _PanoramaVideoDialogState extends State<_PanoramaVideoDialog> {
   }
 
   Future<void> _initialize() async {
-    final errors = <String>[];
+    try {
+      final controller = await VideoPlayerService.createController(
+        sources: VideoPlayerService.buildSources(
+          videoUrl: widget.videoUrl,
+          videoAsset: widget.videoAsset,
+        ),
+        playbackSpeed: _playbackSpeed,
+      );
 
-    for (final source in _videoSources()) {
-      VideoPlayerController? controller;
-      try {
-        controller = source.isNetwork
-            ? VideoPlayerController.networkUrl(Uri.parse(source.value))
-            : VideoPlayerController.asset(source.value);
-        await controller.initialize();
-        await controller.setPlaybackSpeed(_playbackSpeed);
-
-        if (!mounted) {
-          await controller.dispose();
-          return;
-        }
-
-        setState(() {
-          _controller = controller;
-          _error = null;
-        });
-        await controller.play();
+      if (!mounted) {
+        await controller.dispose();
         return;
-      } catch (error) {
-        errors.add('${source.label}: $error');
-        await controller?.dispose();
       }
-    }
 
-    if (mounted) {
       setState(() {
-        _error = errors.isEmpty
-            ? 'Cannot play this hotspot video.'
-            : 'Cannot play this hotspot video.\nPlease restart the backend and try again.';
+        _controller = controller;
+        _error = null;
+      });
+    } on VideoLoadException catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error =
+            'Cannot play this hotspot video.\nPlease restart the backend and try again.';
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Cannot play this hotspot video.';
       });
     }
-  }
-
-  List<_VideoSource> _videoSources() {
-    final sources = <_VideoSource>[];
-    final videoUrl = normalizePlayableVideoUrl(widget.videoUrl);
-    final videoAsset = widget.videoAsset.trim();
-    final backendAssetUrl = backendVideoUrl(videoAsset);
-
-    if (videoUrl.isNotEmpty) {
-      sources.add(_VideoSource.network('saved video URL', videoUrl));
-    }
-    if (backendAssetUrl != null) {
-      sources.add(_VideoSource.network('backend asset URL', backendAssetUrl));
-    }
-    if (isBundledVideoAsset(videoAsset)) {
-      sources.add(_VideoSource.asset('bundled asset', videoAsset));
-    }
-
-    return sources;
   }
 
   void _setSpeed(double speed) {
@@ -702,26 +769,6 @@ class _PanoramaVideoDialogState extends State<_PanoramaVideoDialog> {
     }
 
     return VideoPlayer(controller);
-  }
-}
-
-class _VideoSource {
-  final String label;
-  final String value;
-  final bool isNetwork;
-
-  const _VideoSource._({
-    required this.label,
-    required this.value,
-    required this.isNetwork,
-  });
-
-  factory _VideoSource.network(String label, String value) {
-    return _VideoSource._(label: label, value: value, isNetwork: true);
-  }
-
-  factory _VideoSource.asset(String label, String value) {
-    return _VideoSource._(label: label, value: value, isNetwork: false);
   }
 }
 
@@ -903,6 +950,135 @@ class _ErrorState extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Category card (Image + title bar + View button) ────────────────────────
+class _PanoramaCategoryCard extends StatelessWidget {
+  final String title;
+  final String imageUrl;
+  final bool highlighted;
+  final VoidCallback onView;
+  final IconData icon;
+
+  const _PanoramaCategoryCard({
+    required this.title,
+    required this.imageUrl,
+    required this.onView,
+    required this.icon,
+    this.highlighted = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onView,
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFF0E7C8C),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: highlighted ? kAccent : const Color(0xFFAEEAF2),
+            width: highlighted ? 2.5 : 1.6,
+          ),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x22000000),
+              blurRadius: 8,
+              offset: Offset(0, 3),
+            ),
+          ],
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          children: [
+            Expanded(
+              child: SizedBox(
+                width: double.infinity,
+                child: Image.network(
+                  imageUrl,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Container(
+                    color: const Color(0xFFE0F7FA),
+                    alignment: Alignment.center,
+                    child: const Icon(
+                      Icons.threesixty_rounded,
+                      color: Color(0xFF0E7C8C),
+                      size: 40,
+                    ),
+                  ),
+                  loadingBuilder: (context, child, progress) {
+                    if (progress == null) return child;
+                    return Container(
+                      color: const Color(0xFFE0F7FA),
+                      alignment: Alignment.center,
+                      child: const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.4,
+                          color: Color(0xFF0E7C8C),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(icon, color: Colors.white, size: 18),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Material(
+                    color: const Color(0xFF34C759),
+                    borderRadius: BorderRadius.circular(999),
+                    child: InkWell(
+                      onTap: onView,
+                      borderRadius: BorderRadius.circular(999),
+                      child: Container(
+                        width: 86,
+                        height: 28,
+                        alignment: Alignment.center,
+                        child: const Text(
+                          'View',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

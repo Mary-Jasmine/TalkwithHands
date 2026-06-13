@@ -18,6 +18,27 @@ const avatarPreferencesSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const learnedSignsSchema = new mongoose.Schema(
+  {
+    alphabet: { type: [String], default: [] },
+    number: { type: [String], default: [] },
+    basic_word: { type: [String], default: [] },
+  },
+  { _id: false }
+);
+
+const progressSchema = new mongoose.Schema(
+  {
+    learned: { type: learnedSignsSchema, default: () => ({}) },
+    games_played: { type: Number, default: 0 },
+    seconds_spent: { type: Number, default: 0 },
+    streak_days: { type: Number, default: 0 },
+    last_active_date: { type: String, default: null },
+    monthly_events: { type: Map, of: Number, default: {} },
+  },
+  { _id: false }
+);
+
 const userSchema = new mongoose.Schema(
   {
     username: { type: String, required: true, trim: true },
@@ -34,6 +55,7 @@ const userSchema = new mongoose.Schema(
     age: { type: Number },
     app_feedback: { type: feedbackSchema, default: () => ({}) },
     avatar_preferences: { type: avatarPreferencesSchema, default: () => ({}) },
+    progress: { type: progressSchema, default: () => ({}) },
   },
   { timestamps: true }
 );

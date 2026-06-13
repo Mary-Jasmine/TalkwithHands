@@ -28,6 +28,36 @@ String normalizePlayableVideoUrl(String value) {
   ).toString();
 }
 
+String? backendProxyVideoUrl(String value) {
+  final url = value.trim();
+  if (url.isEmpty) return null;
+
+  final uri = Uri.tryParse(url);
+  if (uri == null) return null;
+
+  final fileId = _googleDriveFileId(uri);
+  if (fileId == null || fileId.isEmpty) return null;
+
+  return absoluteBackendUrl('/media/videos/$fileId');
+}
+
+String? resolvePrimaryVideoPlayUrl({
+  required String videoUrl,
+  required String videoAsset,
+}) {
+  final proxyUrl = backendProxyVideoUrl(videoUrl);
+  if (proxyUrl != null) return proxyUrl;
+
+  final backendAssetUrl = backendVideoUrl(videoAsset);
+  if (backendAssetUrl != null) return backendAssetUrl;
+
+  final directUrl = normalizePlayableVideoUrl(videoUrl);
+  if (directUrl.isNotEmpty) return directUrl;
+
+  if (isBundledVideoAsset(videoAsset)) return videoAsset.trim();
+  return null;
+}
+
 bool hasPlayableVideoSource({
   required String videoAsset,
   required String videoUrl,

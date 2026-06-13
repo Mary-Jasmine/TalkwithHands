@@ -93,6 +93,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
           title: sign.title,
           videoAsset: sign.videoAsset,
           videoUrl: sign.videoUrl,
+          activityCategory: 'number',
         ),
       ),
     );

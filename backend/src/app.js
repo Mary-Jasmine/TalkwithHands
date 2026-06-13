@@ -15,6 +15,8 @@ import alphabetRoutes from './routes/alphabetRoutes.js';
 import basicWordRoutes from './routes/basicWordRoutes.js';
 import numberRoutes from './routes/numberRoutes.js';
 import panoramaRoutes from './routes/panoramaRoutes.js';
+import progressRoutes from './routes/progressRoutes.js';
+import mediaRoutes from './routes/mediaRoutes.js';
 import uploadRoutes from './routes/uploadRoutes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -79,20 +81,25 @@ export function createApp(options = {}) {
       setHeaders(res) {
         res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
         res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Cache-Control', 'public, max-age=86400');
       },
     })
   );
   app.use(
     '/uploads',
     express.static(uploadsDir, {
+      acceptRanges: true,
       setHeaders(res) {
         res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
         res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Cache-Control', 'public, max-age=86400');
       },
     })
   );
 
   app.use('/auth', authRoutes);
+  app.use('/media', mediaRoutes);
+  app.use('/progress', progressRoutes);
   app.use('/admin/uploads', uploadRoutes);
   app.use('/alphabet-signs', alphabetRoutes);
   app.use('/basic-words', basicWordRoutes);

@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:video_player/video_player.dart';
 
 import '../models/basic_word.dart';
 import '../services/basic_word_service.dart';
 import '../services/progress_service.dart';
 import '../ui/app_shell.dart';
-import '../utils/video_url_utils.dart';
 import 'sign_detector_screen.dart';
 import 'tutorial_video_screen.dart';
 
@@ -18,21 +16,31 @@ const List<String> _knownCategories = [
   'Alphabet',
   'Animal',
   'Color',
+  'Days of the week',
   'Direction and Location',
   'Emotion',
+  'Emotions',
   'Environment',
   'Family',
   'Feelings',
   'Food',
   'Food Taste',
+  'Fruits',
   'Greetings',
   'Health and Emergency',
   'Kitchenware',
   'Money and Shopping',
+  'Months',
+  'NOT EDIT',
+  'Not Edited',
   'Numbers',
+  'Operations',
+  'Person',
   'Personal Things',
+  'Questions',
   'Religion and Values',
   'Responses and Reactions',
+  'School',
   'School Supply',
   'Shape',
   'Technology and Communication',
@@ -41,25 +49,51 @@ const List<String> _knownCategories = [
   'Transportation',
 ];
 
+// ── Sign language sets ──────────────────────────────────────────────────────
+// Categories shown when the user switches the toggle to "FSL Signs".
+const List<String> _fslCategories = [
+  'Animal',
+  'Color',
+  'Days of the week',
+  'Emotions',
+  'Fruits',
+  'Months',
+  'Person',
+  'Questions',
+  'School',
+];
+
+enum SignLanguage { asl, fsl }
+
 const Map<String, IconData> _categoryIcons = {
   'Alphabet': Icons.abc_rounded,
   'Animal': Icons.pets_rounded,
   'Color': Icons.palette_outlined,
+  'Days of the week': Icons.calendar_view_week_outlined,
   'Direction and Location': Icons.explore_outlined,
   'Emotion': Icons.sentiment_satisfied_alt_outlined,
+  'Emotions': Icons.sentiment_satisfied_alt_outlined,
   'Environment': Icons.park_outlined,
   'Family': Icons.family_restroom_rounded,
   'Feelings': Icons.favorite_border_rounded,
   'Food': Icons.restaurant_outlined,
   'Food Taste': Icons.local_dining_outlined,
+  'Fruits': Icons.apple_outlined,
   'Greetings': Icons.waving_hand_outlined,
   'Health and Emergency': Icons.medical_services_outlined,
   'Kitchenware': Icons.blender_outlined,
   'Money and Shopping': Icons.shopping_cart_outlined,
+  'Months': Icons.calendar_month_outlined,
+  'NOT EDIT': Icons.block_outlined,
+  'Not Edited': Icons.block_outlined,
   'Numbers': Icons.tag_rounded,
+  'Operations': Icons.calculate_outlined,
+  'Person': Icons.person_outline_rounded,
   'Personal Things': Icons.person_outline_rounded,
+  'Questions': Icons.help_outline_rounded,
   'Religion and Values': Icons.auto_awesome_outlined,
   'Responses and Reactions': Icons.thumbs_up_down_outlined,
+  'School': Icons.school_outlined,
   'School Supply': Icons.backpack_outlined,
   'Shape': Icons.category_outlined,
   'Technology and Communication': Icons.devices_outlined,
@@ -89,7 +123,7 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
 
   // null = show category landing grid; non-null = show word list for that category
   String? _selectedCategory;
-  bool _showDropdown = false;
+  SignLanguage _signLanguage = SignLanguage.asl;
 
   Future<void> _recordLearned(BasicWord word) async {
     try {
@@ -108,13 +142,7 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
       final q = _searchController.text.trim().toLowerCase();
       setState(() {
         _query = q;
-        _showDropdown = q.isNotEmpty;
       });
-    });
-    _searchFocusNode.addListener(() {
-      if (!_searchFocusNode.hasFocus) {
-        setState(() => _showDropdown = false);
-      }
     });
   }
 
@@ -134,7 +162,11 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
     for (final w in words) {
       if (w.category.trim().isNotEmpty) cats.add(w.category);
     }
-    return cats.toList()..sort();
+    final filtered = cats.where((c) {
+      final isFsl = _fslCategories.contains(c);
+      return _signLanguage == SignLanguage.fsl ? isFsl : !isFsl;
+    });
+    return filtered.toList()..sort();
   }
 
   List<BasicWord> _wordsForCategory(List<BasicWord> words, String category) =>
@@ -143,6 +175,10 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
   List<BasicWord> _searchResults(List<BasicWord> words) {
     if (_query.isEmpty) return [];
     return words.where((w) {
+      final isFsl = _fslCategories.contains(w.category);
+      final matchesLanguage =
+          _signLanguage == SignLanguage.fsl ? isFsl : !isFsl;
+      if (!matchesLanguage) return false;
       return w.title.toLowerCase().contains(_query) ||
           w.category.toLowerCase().contains(_query) ||
           w.description.toLowerCase().contains(_query);
@@ -156,18 +192,15 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
         title: word.title,
         videoAsset: word.videoAsset,
         videoUrl: word.videoUrl,
+        activityCategory: 'basic_word',
       ),
     ));
   }
 
-  void _selectSearchResult(BasicWord word) {
+  void _clearSearch() {
     _searchController.clear();
     _searchFocusNode.unfocus();
-    setState(() {
-      _query = '';
-      _showDropdown = false;
-    });
-    _showWordDetails(context, word);
+    setState(() => _query = '');
   }
 
   @override
@@ -190,9 +223,7 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
                   snapshot.connectionState == ConnectionState.waiting;
               final hasError = snapshot.hasError;
 
-              return Stack(
-                children: [
-                  Column(
+              return Column(
                 children: [
                   AppTopBar(
                     onBack: _selectedCategory != null
@@ -213,6 +244,50 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
                     ),
                   ),
 
+                  // ── ASL / FSL switch ─────────────────────────────────────
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+                    child: Center(
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                              color: const Color(0xFFCCCCCC), width: 1.4),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.06),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _SignLanguageOption(
+                              label: 'ASL Signs',
+                              selected: _signLanguage == SignLanguage.asl,
+                              onTap: () => setState(() {
+                                _signLanguage = SignLanguage.asl;
+                                _selectedCategory = null;
+                              }),
+                            ),
+                            _SignLanguageOption(
+                              label: 'FSL Signs',
+                              selected: _signLanguage == SignLanguage.fsl,
+                              onTap: () => setState(() {
+                                _signLanguage = SignLanguage.fsl;
+                                _selectedCategory = null;
+                              }),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+
                   // ── Search bar ────────────────────────────────────────────
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -225,7 +300,7 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(20),
                               border: Border.all(
-                                color: _showDropdown
+                                color: _query.isNotEmpty
                                     ? kVividBlue
                                     : const Color(0xFFCCCCCC),
                                 width: 1.8,
@@ -264,14 +339,7 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
                                 ),
                                 if (_query.isNotEmpty)
                                   GestureDetector(
-                                    onTap: () {
-                                      _searchController.clear();
-                                      _searchFocusNode.unfocus();
-                                      setState(() {
-                                        _query = '';
-                                        _showDropdown = false;
-                                      });
-                                    },
+                                    onTap: _clearSearch,
                                     child: const Padding(
                                       padding: EdgeInsets.only(right: 14),
                                       child: Icon(Icons.close_rounded,
@@ -328,103 +396,24 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
                                     'Cannot load basic words. Make sure the backend is running.',
                                 onRetry: _reload,
                               )
-                            : _selectedCategory == null
-                                ? _buildCategoryGrid(categories, words)
-                                : _buildWordList(
-                                    _wordsForCategory(
-                                        words, _selectedCategory!),
-                                    _selectedCategory!,
-                                  ),
-                  ),
-                ], // end Column
-              ),
-
-              // ── Dropdown overlay (floats above everything) ────────────────
-              if (_showDropdown && words.isNotEmpty)
-                Positioned(
-                  top: 148, // below topbar + title + search bar
-                  left: 20,
-                  right: 20,
-                  child: Material(
-                    elevation: 12,
-                    borderRadius: BorderRadius.circular(14),
-                    color: Colors.white,
-                    child: Container(
-                      constraints: const BoxConstraints(maxHeight: 320),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                            color: const Color(0xFFDDDDDD), width: 1.2),
-                      ),
-                      child: Builder(builder: (_) {
-                        final results = _searchResults(words);
-                        if (results.isEmpty) {
-                          return const Padding(
-                            padding: EdgeInsets.all(20),
-                            child: Text(
-                              'No words found.',
-                              style: TextStyle(
-                                  color: Colors.black45, fontSize: 14),
-                            ),
-                          );
-                        }
-                        final titleCount = <String, int>{};
-                        for (final w in results) {
-                          titleCount[w.title] =
-                              (titleCount[w.title] ?? 0) + 1;
-                        }
-                        final seen = <String>{};
-                        final unique =
-                            results.where((w) => seen.add(w.title)).toList();
-                        return ListView.separated(
-                          shrinkWrap: true,
-                          padding: const EdgeInsets.symmetric(vertical: 6),
-                          itemCount: unique.length,
-                          separatorBuilder: (_, __) =>
-                              const Divider(height: 1, color: Color(0xFFF0F0F0)),
-                          itemBuilder: (context, i) {
-                            final w = unique[i];
-                            final variations = titleCount[w.title] ?? 1;
-                            return InkWell(
-                              onTap: () => _selectSearchResult(w),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 18, vertical: 13),
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        w.title,
-                                        style: const TextStyle(
-                                          fontSize: 15,
-                                          color: Colors.black87,
-                                        ),
+                            : _query.isNotEmpty
+                                ? _buildSearchResults(
+                                    _searchResults(words), categories)
+                                : _selectedCategory == null
+                                    ? _buildCategoryGrid(categories, words)
+                                    : _buildWordList(
+                                        _wordsForCategory(
+                                            words, _selectedCategory!),
+                                        _selectedCategory!,
                                       ),
-                                    ),
-                                    if (variations > 1)
-                                      Text(
-                                        '$variations variations',
-                                        style: const TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.black38,
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
-                        );
-                      }),
-                    ),
                   ),
-                ),
-              ], // end Stack
-            );
-          },
+                ],
+              );
+            },
+          ),
         ),
       ),
-    ));
+    );
   }
 
   // ── Category selection grid (Image 1) ──────────────────────────────────────
@@ -438,7 +427,6 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
     return GestureDetector(
       onTap: () {
         _searchFocusNode.unfocus();
-        setState(() => _showDropdown = false);
       },
       behavior: HitTestBehavior.translucent,
       child: Padding(
@@ -464,7 +452,7 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
                   crossAxisCount: 4,
                   crossAxisSpacing: 10,
                   mainAxisSpacing: 10,
-                  childAspectRatio: 0.85,
+                  childAspectRatio: 0.72,
                 ),
                 itemCount: categories.length,
                 itemBuilder: (context, i) {
@@ -479,7 +467,6 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
                     onTap: () {
                       _searchFocusNode.unfocus();
                       setState(() {
-                        _showDropdown = false;
                         _selectedCategory = cat;
                       });
                     },
@@ -572,6 +559,92 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
     );
   }
 
+  // ── Filtered results grouped as category sections while searching ──────────
+  Widget _buildSearchResults(List<BasicWord> results, List<String> categories) {
+    if (results.isEmpty) {
+      return const _EmptyCategory(category: '', hasQuery: true);
+    }
+
+    final byCategory = <String, List<BasicWord>>{};
+    for (final w in results) {
+      byCategory.putIfAbsent(w.category, () => []).add(w);
+    }
+    final orderedCats = categories.where(byCategory.containsKey).toList();
+    for (final c in byCategory.keys) {
+      if (!orderedCats.contains(c)) orderedCats.add(c);
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(13, 14, 15, 10),
+      child: Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: const Color.fromARGB(181, 88, 170, 248).withValues(alpha: 0.18),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color:
+                const Color.fromARGB(255, 156, 156, 156).withValues(alpha: 0.55),
+            width: 1.5,
+          ),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(12, 16, 12, 24),
+          children: [
+            for (final cat in orderedCats) ...[
+              Row(
+                children: [
+                  Icon(
+                    _categoryIcons[cat] ?? Icons.category_outlined,
+                    color: const Color.fromARGB(255, 14, 0, 137),
+                    size: 18,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    cat,
+                    style: const TextStyle(
+                      color: Colors.black87,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  const spacing = 9.0;
+                  const columns = 3;
+                  final itemWidth =
+                      (constraints.maxWidth - spacing * (columns - 1)) /
+                          columns;
+                  return Wrap(
+                    spacing: spacing,
+                    runSpacing: 12,
+                    children: byCategory[cat]!
+                        .map((word) => SizedBox(
+                              width: itemWidth,
+                              height: 160,
+                              child: _BasicWordCard(
+                                word: word,
+                                showCategory: false,
+                                onView: () => _showWordDetails(context, word),
+                                onWatch: () => _openVideo(word),
+                              ),
+                            ))
+                        .toList(),
+                  );
+                },
+              ),
+              const SizedBox(height: 20),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showWordDetails(BuildContext context, BasicWord word) {
     showDialog<void>(
       context: context,
@@ -606,7 +679,7 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
                     SizedBox(
                       height: 190,
                       width: double.infinity,
-                      child: _WordPreview(word: word, fit: BoxFit.contain),
+                      child: _WordThumbnail(word: word),
                     ),
                     if (word.description.isNotEmpty)
                       Padding(
@@ -664,6 +737,43 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
   }
 }
 
+// ── ASL / FSL toggle pill option ───────────────────────────────────────────
+class _SignLanguageOption extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _SignLanguageOption({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected ? kVividBlue : Colors.transparent,
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            style: TextStyle(
+              color: selected ? Colors.white : const Color(0xFF9DA4AD),
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 // ── Category tile for the grid landing ────────────────────────────────────────
 class _CategoryTile extends StatelessWidget {
   final String label;
@@ -697,6 +807,7 @@ class _CategoryTile extends StatelessWidget {
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Container(
               width: 44,
@@ -715,14 +826,14 @@ class _CategoryTile extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 4),
               child: Text(
                 label,
-                maxLines: 4,
+                maxLines: 3,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   color: Color(0xFF2E7D32),
-                  fontSize: 10,
+                  fontSize: 9,
                   fontWeight: FontWeight.w700,
-                  height: 1.2,
+                  height: 1.15,
                 ),
               ),
             ),
@@ -858,6 +969,7 @@ class _BasicWordCard extends StatelessWidget {
                             label: 'Watch',
                             icon: Icons.play_circle_outline_rounded,
                             onTap: onWatch,
+                            color: Color(0xFF1E8C3A),
                           ),
                         ),
                       ],
@@ -877,17 +989,19 @@ class _TinyAction extends StatelessWidget {
   final String label;
   final IconData icon;
   final VoidCallback onTap;
+  final Color color;
 
   const _TinyAction({
     required this.label,
     required this.icon,
     required this.onTap,
+    this.color = kVividBlue,
   });
 
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: kVividBlue,
+      color: color,
       borderRadius: BorderRadius.circular(999),
       child: InkWell(
         onTap: onTap,
@@ -981,143 +1095,6 @@ class _PlaceholderThumb extends StatelessWidget {
               ),
             )
           : const SizedBox.shrink(),
-    );
-  }
-}
-
-class _WordPreview extends StatefulWidget {
-  final BasicWord word;
-  final BoxFit fit;
-
-  const _WordPreview({
-    required this.word,
-    required this.fit,
-  });
-
-  @override
-  State<_WordPreview> createState() => _WordPreviewState();
-}
-
-class _WordPreviewState extends State<_WordPreview> {
-  VideoPlayerController? _controller;
-  bool _failed = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _initialize();
-  }
-
-  @override
-  void dispose() {
-    _controller?.dispose();
-    super.dispose();
-  }
-
-  Future<void> _initialize() async {
-    if (widget.word.imageUrl.isNotEmpty || widget.word.imageAsset.isNotEmpty) {
-      return;
-    }
-    final source = _videoSource();
-    if (source == null) {
-      if (mounted) setState(() => _failed = true);
-      return;
-    }
-    VideoPlayerController? controller;
-    try {
-      controller = source.isNetwork
-          ? VideoPlayerController.networkUrl(Uri.parse(source.value))
-          : VideoPlayerController.asset(source.value);
-      await controller.initialize();
-      await controller.setVolume(0);
-      await controller.setLooping(true);
-      await controller.play();
-      if (!mounted) {
-        await controller.dispose();
-        return;
-      }
-      setState(() => _controller = controller);
-    } catch (_) {
-      await controller?.dispose();
-      if (mounted) {
-        setState(() => _failed = true);
-      }
-    }
-  }
-
-  _VideoSource? _videoSource() {
-    final videoUrl = normalizePlayableVideoUrl(widget.word.videoUrl);
-    final videoAsset = widget.word.videoAsset.trim();
-    final backendAssetUrl = backendVideoUrl(videoAsset);
-    if (videoUrl.isNotEmpty) return _VideoSource.network(videoUrl);
-    if (backendAssetUrl != null) return _VideoSource.network(backendAssetUrl);
-    if (isBundledVideoAsset(videoAsset)) return _VideoSource.asset(videoAsset);
-    return null;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (widget.word.imageUrl.isNotEmpty) {
-      return Image.network(widget.word.imageUrl,
-          fit: widget.fit,
-          errorBuilder: (_, __, ___) =>
-              _PreviewFallback(label: widget.word.title));
-    }
-    if (widget.word.imageAsset.isNotEmpty) {
-      return Image.asset(widget.word.imageAsset,
-          fit: widget.fit,
-          errorBuilder: (_, __, ___) =>
-              _PreviewFallback(label: widget.word.title));
-    }
-    final controller = _controller;
-    if (controller != null) {
-      return FittedBox(
-        fit: widget.fit,
-        clipBehavior: Clip.hardEdge,
-        child: SizedBox(
-          width: controller.value.size.width,
-          height: controller.value.size.height,
-          child: VideoPlayer(controller),
-        ),
-      );
-    }
-    return _PreviewFallback(label: widget.word.title, loading: !_failed);
-  }
-}
-
-class _VideoSource {
-  final String value;
-  final bool isNetwork;
-  const _VideoSource._({required this.value, required this.isNetwork});
-  factory _VideoSource.network(String value) =>
-      _VideoSource._(value: value, isNetwork: true);
-  factory _VideoSource.asset(String value) =>
-      _VideoSource._(value: value, isNetwork: false);
-}
-
-class _PreviewFallback extends StatelessWidget {
-  final String label;
-  final bool loading;
-
-  const _PreviewFallback({
-    required this.label,
-    this.loading = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    if (loading) {
-      return const Center(
-        child: CircularProgressIndicator(color: Color(0xFF078FA5)),
-      );
-    }
-
-    return const Center(
-      child: Icon(
-        Icons.play_circle_outline_rounded,
-        color: Color(0xFF185FA5),
-        size: 48,
-      ),
     );
   }
 }

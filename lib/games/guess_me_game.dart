@@ -88,7 +88,9 @@ const _kGold = Color(0xFFFFD700);
 //  GAME SCREEN
 // ═════════════════════════════════════════════════════════════
 class GuessMeScreen extends StatefulWidget {
-  const GuessMeScreen({super.key});
+  final VoidCallback? onGameFinished;
+
+  const GuessMeScreen({super.key, this.onGameFinished});
 
   @override
   State<GuessMeScreen> createState() => _GuessMeScreenState();
@@ -217,6 +219,7 @@ class _GuessMeScreenState extends State<GuessMeScreen>
   // ─── End game ────────────────────────────────────────────────
   void _endGame({required bool won}) {
     _countdownTimer?.cancel();
+    widget.onGameFinished?.call();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       Navigator.of(context).pushReplacement(

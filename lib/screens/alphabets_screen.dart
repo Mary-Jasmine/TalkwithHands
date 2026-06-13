@@ -124,6 +124,7 @@ class _AlphabetsScreenState extends State<AlphabetsScreen> {
           title: sign.letter,
           videoAsset: sign.videoAsset,
           videoUrl: sign.videoUrl,
+          activityCategory: 'alphabet',
         ),
       ),
     );

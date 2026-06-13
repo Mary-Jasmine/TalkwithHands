@@ -52,7 +52,9 @@ class _GameHubScreenState extends State<GameHubScreen> {
   void _openGuessMe() {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => const guess_me.GuessMeScreen(),
+        builder: (_) => guess_me.GuessMeScreen(
+          onGameFinished: _recordGameFinished,
+        ),
       ),
     );
   }
