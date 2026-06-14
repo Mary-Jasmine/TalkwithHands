@@ -321,6 +321,10 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
     switch (scene.icon) {
       case 'bench':
         return Icons.chair_outlined;
+      case 'school':  
+        return Icons.school_outlined;  
+      case 'classroom':
+        return Icons.meeting_room_outlined;  
       case 'crossing':
         return Icons.directions_walk_rounded;
       case 'cafe':

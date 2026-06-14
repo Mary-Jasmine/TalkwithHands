@@ -6,8 +6,7 @@ import express from 'express';
 
 const router = express.Router();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const projectRoot = path.resolve(__dirname, '../../..');
-const dataDir = path.join(projectRoot, 'backend', 'data');
+const dataDir = path.resolve(__dirname, '../../data');
 const numberFile = path.join(dataDir, 'number-signs.json');
 
 const defaultNumberSigns = Array.from({ length: 21 }, (_value, number) => ({
@@ -94,3 +93,4 @@ router.delete('/:id', async (req, res, next) => {
 });
 
 export default router;
+

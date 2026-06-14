@@ -969,7 +969,7 @@ class _BasicWordCard extends StatelessWidget {
                             label: 'Watch',
                             icon: Icons.play_circle_outline_rounded,
                             onTap: onWatch,
-                            color: Color(0xFF1E8C3A),
+                            color: const Color(0xFF1E8C3A),
                           ),
                         ),
                       ],

@@ -20,9 +20,9 @@ import mediaRoutes from './routes/mediaRoutes.js';
 import uploadRoutes from './routes/uploadRoutes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const projectRoot = path.resolve(__dirname, '../..');
-const assetsDir = path.join(projectRoot, 'assets');
-const uploadsDir = path.join(projectRoot, 'uploads');
+const projectRoot = path.resolve(__dirname, '..');
+const assetsDir = path.resolve(__dirname, '../assets');
+const uploadsDir = path.resolve(__dirname, '../uploads');
 console.log('Serving assets from:', assetsDir);
 console.log('Assets dir exists:', fs.existsSync(assetsDir));
 
@@ -154,7 +154,7 @@ export async function start() {
   await connectDb();
 
   const app = createApp();
-  const port = Number(process.env.PORT || 4000);
+  const port = Number(process.env.PORT || process.env.RAILWAY_PORT || 8080);
   const host = process.env.HOST || '0.0.0.0';
   app.listen(port, host, () => {
     console.log(`Auth API running on http://${host}:${port}`);
