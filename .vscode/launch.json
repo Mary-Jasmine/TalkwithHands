@@ -2,16 +2,6 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Talk with Hands",
-      "request": "launch",
-      "type": "dart",
-      "program": "lib/main.dart",
-      "cwd": "${workspaceFolder}",
-      "env": {
-        "JAVA_HOME": "C:\\Program Files\\Android\\Android Studio\\jbr"
-      }
-    },
-    {
       "name": "Talk with Hands (Chrome)",
       "request": "launch",
       "type": "dart",
@@ -19,6 +9,23 @@
       "cwd": "${workspaceFolder}",
       "deviceId": "chrome",
       "env": {
+        "APPDATA": "${workspaceFolder}\\.flutter_appdata",
+        "ANDROID_HOME": "C:\\AndroidSdk",
+        "ANDROID_SDK_ROOT": "C:\\AndroidSdk",
+        "JAVA_HOME": "C:\\Program Files\\Android\\Android Studio\\jbr"
+      }
+    },
+    {
+      "name": "Talk with Hands (Mobile)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "cwd": "${workspaceFolder}",
+      "flutterMode": "debug",
+      "env": {
+        "APPDATA": "${workspaceFolder}\\.flutter_appdata",
+        "ANDROID_HOME": "C:\\AndroidSdk",
+        "ANDROID_SDK_ROOT": "C:\\AndroidSdk",
         "JAVA_HOME": "C:\\Program Files\\Android\\Android Studio\\jbr"
       }
     }

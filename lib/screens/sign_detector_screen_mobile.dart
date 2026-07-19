@@ -31,6 +31,7 @@ const List<String> kDict = [
   'together',
   'i love you',
   'i',
+  'im',
   'is',
   'it',
   'in',
@@ -107,8 +108,21 @@ enum DetectionMode { words, az, num, motion }
 
 enum MotionCategory { words, az, num }
 
+enum CaptureKind { image, video }
+
 class SignDetectorScreen extends StatefulWidget {
-  const SignDetectorScreen({super.key});
+  final DetectionMode initialMode;
+  final bool lockMode;
+  final CaptureKind captureKind;
+  final String title;
+
+  const SignDetectorScreen({
+    super.key,
+    this.initialMode = DetectionMode.words,
+    this.lockMode = false,
+    this.captureKind = CaptureKind.video,
+    this.title = 'Talk With Hands',
+  });
 
   @override
   State<SignDetectorScreen> createState() => _SignDetectorScreenState();
@@ -157,20 +171,20 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
   String? _captureMessage;
   // Require 8 consistent frames before confirming — prevents mid-transition false triggers
   // At ~3 detections/sec on TECNO KM4k this means ~2.5 seconds of holding the sign
-  static const int _holdNeed = 8;
+  static const int _holdNeed = 4;
   // PERF FIX 1: Process every 3rd frame instead of every 2nd.
   // At 30fps this means ~10 detections/sec — more than enough, less CPU load.
-  static const int _processEveryNFrames = 8;
+  static const int _processEveryNFrames = 15;
   // PERF FIX 2: Minimum 80ms between inferences (~12fps cap).
   // Prevents MediaPipe from stacking calls on slow devices.
-  static const Duration _minInferenceGap = Duration(milliseconds: 220);
+  static const Duration _minInferenceGap = Duration(milliseconds: 450);
   // PERF FIX 3: UI refreshes at most every 80ms to avoid setState storms.
-  static const Duration _minUiGap = Duration(milliseconds: 160);
+  static const Duration _minUiGap = Duration(milliseconds: 300);
   // PERF FIX 4: Increase smoothing factor slightly (0.45 → 0.35).
   // Lower value = more weight on previous frame = less jitter, less compute.
-  static const double _landmarkSmoothing = 0.35;
+  static const double _landmarkSmoothing = 0.25;
 
-  DetectionMode _mode = DetectionMode.words;
+  late DetectionMode _mode;
   MotionCategory _motionCategory = MotionCategory.words;
   List<String> _words = [];
   String _curWord = '';
@@ -190,9 +204,23 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
     return Size(previewSize.height, previewSize.width);
   }
 
+  bool get _usesVideoCapture => widget.captureKind == CaptureKind.video;
+
+  String get _startCaptureLabel =>
+      _usesVideoCapture ? 'Start Video Capture' : 'Start Capture';
+
+  String get _stopCaptureLabel =>
+      _usesVideoCapture ? 'Stop Video Capture' : 'Stop Capture';
+
+  String get _captureNoun => _usesVideoCapture ? 'video' : 'image';
+
+  String get _activeCaptureText =>
+      _usesVideoCapture ? 'Recording video...' : 'Capturing images...';
+
   @override
   void initState() {
     super.initState();
+    _mode = widget.initialMode;
     WidgetsBinding.instance.addObserver(this);
     _handLandmarker = mp_hand.HandLandmarkerPlugin.create(
       numHands: 1,
@@ -272,7 +300,8 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
         _loading = false;
       });
 
-      await _startImageStream();
+      // Leave the preview smooth. Start the analyzer stream only while
+      // a sign capture is active.
     } catch (error) {
       setState(() {
         _loadText = 'Camera error: $error';
@@ -285,6 +314,8 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
   // Detection is fire-and-forget via unawaited _processFrame().
   void _onCameraFrame(CameraImage image) {
     if (_camPaused ||
+        !_detectionArmed ||
+        _startCountdown > 0 ||
         _processing ||
         !_cameraInitialized ||
         _cameraController == null) {
@@ -365,7 +396,8 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
 
       // PERF FIX: Only call setState when something VISIBLE actually changed.
       // Avoid setState when hit label is same and hand presence hasn't changed.
-      final hitChanged = hit?.label != _currentHit?.label;
+      final visibleHit = _detectionArmed ? null : hit;
+      final hitChanged = visibleHit?.label != _currentHit?.label;
       final handPresenceChanged =
           (displayHandLandmarks == null) != (_handLandmarks == null);
       final uiTimerExpired = now.difference(_lastUiUpdateAt) >= _minUiGap;
@@ -373,7 +405,7 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
       // Always update internal state
       _handLandmarks = displayHandLandmarks;
       _handsLandmarks = displayHandsLandmarks;
-      _currentHit = hit;
+      _currentHit = visibleHit;
 
       // Only trigger rebuild when needed
       if (hitChanged || handPresenceChanged || uiTimerExpired) {
@@ -393,6 +425,7 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
     List<HandLandmark> primaryHandLandmarks,
     List<List<HandLandmark>>? handsLandmarks,
   ) {
+    SignResult? hit;
     switch (_mode) {
       case DetectionMode.az:
         final ruleHit = _classifier.classifyAlphabet(primaryHandLandmarks);
@@ -401,17 +434,22 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
         final tfliteHit = _tfliteClassifier.classifyAlphabet(
           primaryHandLandmarks,
         );
-        return _chooseAlphabetHit(ruleHit, tfliteHit, sequenceHit);
+        hit = _chooseAlphabetHit(ruleHit, tfliteHit, sequenceHit);
+        break;
       case DetectionMode.num:
-        return _tfliteClassifier.classifyNumber(primaryHandLandmarks) ??
+        hit = _tfliteClassifier.classifyNumber(primaryHandLandmarks) ??
             _classifier.classifyNumber(primaryHandLandmarks);
+        break;
       case DetectionMode.words:
-        return _tfliteClassifier.classifyWordsFromHands(handsLandmarks) ??
+        hit = _tfliteClassifier.classifyWordsFromHands(handsLandmarks) ??
             _tfliteClassifier.pushFrameAndClassify(primaryHandLandmarks) ??
             _classifier.classifyWordsFromHands(handsLandmarks);
+        break;
       case DetectionMode.motion:
-        return _classifyMotionFrame(primaryHandLandmarks, handsLandmarks);
+        hit = _classifyMotionFrame(primaryHandLandmarks, handsLandmarks);
+        break;
     }
+    return _acceptedHit(hit);
   }
 
   SignResult? _classifyMotionFrame(
@@ -469,6 +507,34 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
     return tfliteHit ?? ruleHit;
   }
 
+  SignResult? _acceptedHit(SignResult? hit) {
+    if (hit == null) return null;
+    switch (_mode) {
+      case DetectionMode.az:
+        return RegExp(r'^[A-Z]$').hasMatch(hit.label) ? hit : null;
+      case DetectionMode.num:
+        final number = int.tryParse(hit.label);
+        return number != null && number >= 0 && number <= 20 ? hit : null;
+      case DetectionMode.words:
+        final isLetter = RegExp(r'^[A-Z]$').hasMatch(hit.label);
+        final number = int.tryParse(hit.label);
+        final isPracticeNumber = number != null && number >= 0 && number <= 20;
+        return !isLetter && !isPracticeNumber ? hit : null;
+      case DetectionMode.motion:
+        switch (_motionCategory) {
+          case MotionCategory.az:
+            return RegExp(r'^[A-Z]$').hasMatch(hit.label) ? hit : null;
+          case MotionCategory.num:
+            final number = int.tryParse(hit.label);
+            return number != null && number >= 0 && number <= 20 ? hit : null;
+          case MotionCategory.words:
+            final isLetter = RegExp(r'^[A-Z]$').hasMatch(hit.label);
+            final number = int.tryParse(hit.label);
+            return !isLetter && number == null ? hit : null;
+        }
+    }
+  }
+
   Future<void> _startImageStream() async {
     final controller = _cameraController;
     if (controller == null || _streaming || !controller.value.isInitialized) {
@@ -496,7 +562,7 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
     setState(() => _camPaused = paused);
     if (paused) {
       await _stopImageStream();
-    } else {
+    } else if (_detectionArmed && _startCountdown == 0) {
       _lastInferenceAt = DateTime.fromMillisecondsSinceEpoch(0);
       await _startImageStream();
     }
@@ -599,10 +665,14 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
 
   void _startSigningCountdown() {
     _startCountdownTimer?.cancel();
+    unawaited(_stopImageStream());
     setState(() {
       _detectionArmed = false;
       _startCountdown = _prepareSeconds;
       _currentHit = null;
+      _handLandmarks = null;
+      _handsLandmarks = null;
+      _smoothedHandsLandmarks = null;
       _captureHits.clear();
       _captureMessage = null;
       _resetHoldState();
@@ -622,6 +692,8 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
           _startCountdown = 0;
           _detectionArmed = true;
           _lastInferenceAt = DateTime.fromMillisecondsSinceEpoch(0);
+          _frameCounter = 0;
+          unawaited(_startImageStream());
           timer.cancel();
         }
       });
@@ -630,13 +702,17 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
 
   void _finishSigningCapture() {
     if (!_detectionArmed) return;
+    unawaited(_stopImageStream());
     final best = _bestCapturedHit();
     setState(() {
       _detectionArmed = false;
       _startCountdown = 0;
       _currentHit = best;
+      _handLandmarks = null;
+      _handsLandmarks = null;
+      _smoothedHandsLandmarks = null;
       _captureMessage =
-          best == null ? 'No clear sign detected. Try again.' : null;
+          best == null ? 'No clear sign detected. Try capturing again.' : null;
       _captureHits.clear();
       _resetHoldState();
       _classifier.reset();
@@ -706,6 +782,8 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
   }
 
   void _setMode(DetectionMode mode) {
+    if (widget.lockMode && mode != widget.initialMode) return;
+    unawaited(_stopImageStream());
     setState(() {
       _mode = mode;
       _curWord = '';
@@ -718,10 +796,14 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
       _tfliteClassifier.resetSequenceBuffer();
       _holdFrames = 0;
       _currentHit = null;
+      _handLandmarks = null;
+      _handsLandmarks = null;
+      _smoothedHandsLandmarks = null;
     });
   }
 
   void _setMotionCategory(MotionCategory category) {
+    unawaited(_stopImageStream());
     setState(() {
       _motionCategory = category;
       _curWord = '';
@@ -734,6 +816,9 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
       _tfliteClassifier.resetSequenceBuffer();
       _resetHoldState();
       _currentHit = null;
+      _handLandmarks = null;
+      _handsLandmarks = null;
+      _smoothedHandsLandmarks = null;
     });
   }
 
@@ -755,13 +840,20 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
   void _speakFull() => _tts.speak(_buildSentence());
 
   void _clearAll() {
+    unawaited(_stopImageStream());
     setState(() {
       _words = [];
       _curWord = '';
       _history = [];
       _currentHit = null;
+      _handLandmarks = null;
+      _handsLandmarks = null;
+      _smoothedHandsLandmarks = null;
       _captureMessage = null;
       _captureHits.clear();
+      _detectionArmed = false;
+      _startCountdown = 0;
+      _startCountdownTimer?.cancel();
       _resetHoldState();
     });
   }
@@ -774,6 +866,9 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
     if (state == AppLifecycleState.inactive) {
       _camPaused = true;
       _streaming = false;
+      _detectionArmed = false;
+      _startCountdown = 0;
+      _startCountdownTimer?.cancel();
       controller.dispose();
       _cameraController = null;
       _cameraInitialized = false;
@@ -899,9 +994,9 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
       ),
       child: Row(
         children: [
-          const Text(
-            'Talk With Hands',
-            style: TextStyle(
+          Text(
+            widget.title,
+            style: const TextStyle(
               color: Colors.white,
               fontSize: 16,
               fontWeight: FontWeight.w700,
@@ -1016,7 +1111,7 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
           _MiniBar(value: holdBar, color: const Color(0xFFFFCC00)),
           const SizedBox(height: 2),
           Text(
-            _detectionArmed ? 'press Finish Sign when done' : 'ready to start',
+            _detectionArmed ? 'press $_stopCaptureLabel when done' : 'ready',
             style: const TextStyle(color: Color(0x44FFFFFF), fontSize: 9),
           ),
         ],
@@ -1091,34 +1186,36 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Wrap(
-            alignment: WrapAlignment.center,
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              _ModeBtn(
-                label: 'Words',
-                active: _mode == DetectionMode.words,
-                onTap: () => _setMode(DetectionMode.words),
-              ),
-              _ModeBtn(
-                label: 'A-Z Spell',
-                active: _mode == DetectionMode.az,
-                onTap: () => _setMode(DetectionMode.az),
-              ),
-              _ModeBtn(
-                label: '0-20',
-                active: _mode == DetectionMode.num,
-                onTap: () => _setMode(DetectionMode.num),
-              ),
-              _ModeBtn(
-                label: 'Motion',
-                active: _mode == DetectionMode.motion,
-                onTap: () => _setMode(DetectionMode.motion),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
+          if (!widget.lockMode) ...[
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                _ModeBtn(
+                  label: 'Words',
+                  active: _mode == DetectionMode.words,
+                  onTap: () => _setMode(DetectionMode.words),
+                ),
+                _ModeBtn(
+                  label: 'A-Z Spell',
+                  active: _mode == DetectionMode.az,
+                  onTap: () => _setMode(DetectionMode.az),
+                ),
+                _ModeBtn(
+                  label: '0-20',
+                  active: _mode == DetectionMode.num,
+                  onTap: () => _setMode(DetectionMode.num),
+                ),
+                _ModeBtn(
+                  label: 'Motion',
+                  active: _mode == DetectionMode.motion,
+                  onTap: () => _setMode(DetectionMode.motion),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+          ],
           if (_mode == DetectionMode.motion) ...[
             Wrap(
               alignment: WrapAlignment.center,
@@ -1159,9 +1256,9 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
                   child: Text(
                     sentence.isEmpty
                         ? (_detectionArmed
-                            ? 'Signing... press Finish when done'
+                            ? '$_activeCaptureText press $_stopCaptureLabel when done'
                             : (_captureMessage ??
-                                'Press Start, then get ready...'))
+                                'Press $_startCaptureLabel, then get ready...'))
                         : visibleSentence,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
@@ -1250,13 +1347,13 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
               if (spellingMode) _ActBtn(label: 'Space', onTap: _addSpace),
               if (!_detectionArmed && _startCountdown == 0)
                 _ActBtn(
-                  label: 'Start Sign',
+                  label: _startCaptureLabel,
                   accent: true,
                   onTap: _startSigningCountdown,
                 ),
               if (_detectionArmed)
                 _ActBtn(
-                  label: 'Finish Sign',
+                  label: _stopCaptureLabel,
                   accent: true,
                   onTap: _finishSigningCapture,
                 ),
@@ -1309,7 +1406,7 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
                 Text(
                   isCountingDown
                       ? 'Position your hand in the frame'
-                      : 'Press start before signing',
+                      : 'Press $_startCaptureLabel before signing',
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     color: Colors.white,
@@ -1320,8 +1417,8 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
                 const SizedBox(height: 8),
                 Text(
                   isCountingDown
-                      ? 'Detection will begin after the countdown.'
-                      : 'The app will wait $_prepareSeconds seconds so you can position properly.',
+                      ? 'Capture starts after the countdown. The translation is confirmed when you stop.'
+                      : 'The app will wait $_prepareSeconds seconds so you can position properly, then capture $_captureNoun data for detection.',
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     color: Color(0xB3FFFFFF),
@@ -1341,9 +1438,9 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
                         color: kTeal,
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: const Text(
-                        'Start Signing',
-                        style: TextStyle(
+                      child: Text(
+                        _startCaptureLabel,
+                        style: const TextStyle(
                           color: Colors.black,
                           fontSize: 15,
                           fontWeight: FontWeight.w900,

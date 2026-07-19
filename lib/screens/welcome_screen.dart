@@ -152,7 +152,7 @@ class WelcomeScreen extends StatelessWidget {
                       ],
                     ),
                     child: Text(
-                      'Handa ka na bang matuto\nng bagong Senyas ngaung\naraw?',
+                      'Handa ka na bang matuto\nng bagong Senyas ngayong\naraw?',
                       textAlign: TextAlign.center,
                       style: GoogleFonts.poppins(
                         color: const Color(0xFF1A2A5E),
@@ -217,7 +217,7 @@ class _WavingCharacterState extends State<_WavingCharacter>
     super.initState();
     _ctrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1400),
+      duration: const Duration(milliseconds: 1600),
     )..repeat(reverse: true);
     _wave = Tween<double>(begin: -1.0, end: 1.0).animate(
       CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),

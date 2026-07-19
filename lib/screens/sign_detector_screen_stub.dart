@@ -1,7 +1,22 @@
 import 'package:flutter/material.dart';
 
+enum DetectionMode { words, az, num, motion }
+
+enum CaptureKind { image, video }
+
 class SignDetectorScreen extends StatelessWidget {
-  const SignDetectorScreen({super.key});
+  final DetectionMode initialMode;
+  final bool lockMode;
+  final CaptureKind captureKind;
+  final String title;
+
+  const SignDetectorScreen({
+    super.key,
+    this.initialMode = DetectionMode.words,
+    this.lockMode = false,
+    this.captureKind = CaptureKind.video,
+    this.title = 'Talk With Hands',
+  });
 
   @override
   Widget build(BuildContext context) {

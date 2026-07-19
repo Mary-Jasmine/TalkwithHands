@@ -15,6 +15,12 @@ analyzer:
     - android_old/**
     - ios_old/**
     - backend/node_modules/**
+    - react-native-sign-detector/**
+    - rn-sign-detector-app/**
+    - .dart_tool/**
+    - .gradle/**
+    - android/.gradle/**
+    - android/app/build/**
     - lib/guess_asl/**
 
 linter:

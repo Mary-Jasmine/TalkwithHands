@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../models/number_sign.dart';
@@ -109,7 +111,14 @@ class _NumbersScreenState extends State<NumbersScreen> {
         activeScreen: 'Numbers',
       ),
       body: AppBackground(
-        child: SafeArea(
+        child: Stack(
+          children: [
+            const Positioned.fill(
+              child: IgnorePointer(
+                child: _FloatingBubbles(),
+              ),
+            ),
+            SafeArea(
           child: Column(
             children: [
               AppTopBar(
@@ -145,7 +154,12 @@ class _NumbersScreenState extends State<NumbersScreen> {
                     _PracticeButton(
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute(
-                          builder: (_) => const SignDetectorScreen(),
+                          builder: (_) => const SignDetectorScreen(
+                            initialMode: DetectionMode.num,
+                            lockMode: true,
+                            captureKind: CaptureKind.image,
+                            title: 'Number Practice',
+                          ),
                         ),
                       ),
                     ),
@@ -288,6 +302,8 @@ class _NumbersScreenState extends State<NumbersScreen> {
               ),
             ],
           ),
+        ),
+          ],
         ),
       ),
     );
@@ -874,4 +890,152 @@ class _RetryButton extends StatelessWidget {
       ),
     );
   }
+}
+// ── Decorative floating bubbles for the background ──────────────────────────
+// Purely visual, non-interactive layer — sits behind all existing screen
+// content and does not change any other part of the design.
+const List<Color> _bubbleColors = [
+  kVividBlue,
+  kAccent,
+  kGreen,
+  Color(0xFF0B8FFF),
+  Color(0xFF9C27B0),
+];
+
+class _BubbleSpec {
+  final double dx; // horizontal anchor, 0..1 fraction of width
+  final double size;
+  final double speed; // relative rise speed
+  final double phase; // 0..1 start offset so bubbles don't move in sync
+  final double wobble; // horizontal sway amount in logical pixels
+  final Color color;
+  final bool outline; // some bubbles are soft rings instead of filled dots
+
+  const _BubbleSpec({
+    required this.dx,
+    required this.size,
+    required this.speed,
+    required this.phase,
+    required this.wobble,
+    required this.color,
+    required this.outline,
+  });
+}
+
+class _FloatingBubbles extends StatefulWidget {
+  const _FloatingBubbles();
+
+  @override
+  State<_FloatingBubbles> createState() => _FloatingBubblesState();
+}
+
+class _FloatingBubblesState extends State<_FloatingBubbles>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final List<_BubbleSpec> _bubbles;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 28),
+    )..repeat();
+
+    // Fixed seed so the layout is stable across rebuilds/hot reloads
+    // instead of jumping to a new random arrangement every time.
+    final rnd = math.Random(7);
+    _bubbles = List.generate(16, (i) {
+      final color = _bubbleColors[rnd.nextInt(_bubbleColors.length)];
+      return _BubbleSpec(
+        dx: rnd.nextDouble(),
+        size: 14 + rnd.nextDouble() * 46,
+        speed: 0.45 + rnd.nextDouble() * 0.85,
+        phase: rnd.nextDouble(),
+        wobble: 8 + rnd.nextDouble() * 18,
+        color: color,
+        outline: rnd.nextDouble() < 0.4,
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final canvasSize = constraints.biggest;
+        return AnimatedBuilder(
+          animation: _controller,
+          builder: (context, _) {
+            return CustomPaint(
+              size: canvasSize,
+              painter: _BubblesPainter(
+                bubbles: _bubbles,
+                progress: _controller.value,
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _BubblesPainter extends CustomPainter {
+  final List<_BubbleSpec> bubbles;
+  final double progress;
+
+  _BubblesPainter({required this.bubbles, required this.progress});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.width <= 0 || size.height <= 0) return;
+
+    for (final b in bubbles) {
+      // t travels 0 -> 1 -> 0 (loops) at each bubble's own speed/offset.
+      final t = (progress * b.speed + b.phase) % 1.0;
+      final y = size.height * (1 - t);
+      final wobbleX = math.sin((t * 2 * math.pi) + b.phase * 10) * b.wobble;
+      final x = size.width * b.dx + wobbleX;
+      final radius = b.size / 2;
+
+      // Fades in near the bottom, fades out near the top so bubbles never
+      // pop in/out abruptly.
+      final envelope = math.sin(math.pi * t).clamp(0.0, 1.0);
+      final opacity = 0.08 + 0.16 * envelope;
+
+      if (b.outline) {
+        final ring = Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.6
+          ..color = b.color.withValues(alpha: opacity * 1.6);
+        canvas.drawCircle(Offset(x, y), radius, ring);
+      } else {
+        final fill = Paint()
+          ..style = PaintingStyle.fill
+          ..color = b.color.withValues(alpha: opacity);
+        canvas.drawCircle(Offset(x, y), radius, fill);
+      }
+
+      // Tiny glossy highlight so bubbles read as bubbles, not flat dots.
+      final highlight = Paint()
+        ..style = PaintingStyle.fill
+        ..color = Colors.white.withValues(alpha: opacity * 1.4);
+      canvas.drawCircle(
+        Offset(x - radius * 0.32, y - radius * 0.32),
+        radius * 0.22,
+        highlight,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _BubblesPainter oldDelegate) =>
+      oldDelegate.progress != progress;
 }

@@ -61,6 +61,8 @@ class _TutorialVideoScreenState extends State<TutorialVideoScreen> {
         return;
       }
 
+      await controller.setVolume(0);
+
       setState(() {
         _controller = controller;
         _error = null;
@@ -448,16 +450,6 @@ class _VideoControls extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 4),
-          IconButton(
-            color: Colors.white,
-            onPressed: () => controller.setVolume(value.volume > 0 ? 0 : 1),
-            icon: Icon(
-              value.volume > 0
-                  ? Icons.volume_up_rounded
-                  : Icons.volume_off_rounded,
-            ),
-            tooltip: value.volume > 0 ? 'Mute' : 'Unmute',
-          ),
           IconButton(
             color: Colors.white,
             onPressed: onToggleFullscreen,
