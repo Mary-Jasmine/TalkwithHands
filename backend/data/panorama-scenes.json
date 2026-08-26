@@ -14,112 +14,116 @@
         "key": "motorcycle",
         "label": "Motorcycle",
         "video_asset": "",
-        "video_url": "https://drive.usercontent.google.com/download?id=11bvdLim7B0GlQI2fDpnzpUFvBiXlDXHw&export=download&confirm=t",
+        "video_url": "",
         "yaw": 125,
         "pitch": -3,
         "size": 1,
         "sort_order": 1
       },
-
       {
         "id": "bench-tricycle",
         "key": "tricycle",
         "label": "Tricycle",
         "video_asset": "",
-        "video_url": "https://drive.usercontent.google.com/download?id=1BlOocJhK83VmZD9PBmtZPq2nWM8NaufB&export=download&confirm=t",
+        "video_url": "https://res.cloudinary.com/dxbupqx6u/video/upload/v1785888703/tricycle_kqfsn4.mp4",
         "yaw": 80,
         "pitch": 7,
         "size": 1,
-        "sort_order": 2
+        "sort_order": 2,
+        "front_video_url": "https://res.cloudinary.com/dxbupqx6u/video/upload/v1785888698/tricycle_front_s18ih3.mp4",
+        "left_video_url": "",
+        "right_video_url": "",
+        "image_url": "https://res.cloudinary.com/dxbupqx6u/image/upload/v1785888558/tricycle_m1aloc.jpg"
       },
-
       {
         "id": "bench-tricycle",
         "key": "tricycle",
         "label": "Tricycle",
         "video_asset": "",
-        "video_url": "https://drive.usercontent.google.com/download?id=1BlOocJhK83VmZD9PBmtZPq2nWM8NaufB&export=download&confirm=t",
+        "video_url": "https://res.cloudinary.com/dxbupqx6u/video/upload/v1785888703/tricycle_kqfsn4.mp4",
         "yaw": 165,
         "pitch": 7,
         "size": 1,
-        "sort_order": 2
+        "sort_order": 2,
+        "front_video_url": "https://res.cloudinary.com/dxbupqx6u/video/upload/v1785888698/tricycle_front_s18ih3.mp4",
+        "left_video_url": "",
+        "right_video_url": "",
+        "image_url": "https://res.cloudinary.com/dxbupqx6u/image/upload/v1785888558/tricycle_m1aloc.jpg"
       },
-
-            {
+      {
         "id": "bench-rock",
         "key": "rock",
         "label": "Rock",
         "video_asset": "",
-        "video_url": "https://drive.google.com/file/d/14vw1FLGcZT_gQpsmcqpoNLkNAa_vILeO/view?usp=drive_link",
+        "video_url": "",
         "yaw": 165,
         "pitch": 7,
         "size": 1,
         "sort_order": 2
       },
-
       {
         "id": "bench-car",
         "key": "car",
         "label": "Car",
-        "video_asset": "", 
-        "video_url": "https://drive.usercontent.google.com/download?id=1IBQYOBLDZFynCaeWK-GqVQA0IjvNqdhv&export=download&confirm=t",
+        "video_asset": "",
+        "video_url": "https://res.cloudinary.com/dxbupqx6u/video/upload/v1785888705/car_tcgh8e.mp4",
         "yaw": 245,
         "pitch": 15,
         "size": 1,
-        "sort_order": 3
+        "sort_order": 3,
+        "front_video_url": "https://res.cloudinary.com/dxbupqx6u/video/upload/v1785888699/car_front_zm2i0s.mp4",
+        "left_video_url": "",
+        "right_video_url": "",
+        "image_url": "https://res.cloudinary.com/dxbupqx6u/image/upload/v1785888559/car_zwjnh8.jpg"
       }
-    ] 
+    ]
   },
-
-{
-  "id": "classroom",
-  "key": "classroom",
-  "title": "Classroom",
-  "image_asset": "assets/360/Classroom.png",
-  "image_url": "",
-  "icon": "classroom",
-  "sort_order": 2,
-  "is_active": true,
-  "hotspots": [
-    {
-      "id": "classroom-chair",
-      "key": "chair",
-      "label": "Chair",
-      "video_asset": "",
-      "video_url": "https://drive.google.com/file/d/19pCKkvo9wPLMyEFs9RLPh4Gah5OxrBGN/view?usp=drive_link",
-      "yaw": 90,
-      "pitch": 0,
-      "size": 1,
-      "sort_order": 1
-    }
-  ]
-},
-
-
-{
-  "id": "school",
-  "key": "school",
-  "title": "School",
-  "image_asset": "assets/360/School.png",
-  "image_url": "",
-  "icon": "meeting_room",
-  "sort_order": 2,
-  "is_active": true,
-  "hotspots": [
-    {
-      "id": "school-surroundings",
-      "key": "clouds",
-      "label": "Clouds",
-      "video_asset": "",
-      "video_url": "https://drive.google.com/file/d/1KVu3hDG1jZ6UWdT0xnLKrNB4SlByiqoR/view?usp=drive_link",
-      "yaw": 90,
-      "pitch": 0,
-      "size": 1,
-      "sort_order": 1
-    }
-  ]
-},
-
+  {
+    "id": "classroom",
+    "key": "classroom",
+    "title": "Classroom",
+    "image_asset": "assets/360/Classroom.png",
+    "image_url": "",
+    "icon": "classroom",
+    "sort_order": 2,
+    "is_active": true,
+    "hotspots": [
+      {
+        "id": "classroom-chair",
+        "key": "chair",
+        "label": "Chair",
+        "video_asset": "",
+        "video_url": "",
+        "yaw": 90,
+        "pitch": 0,
+        "size": 1,
+        "sort_order": 1
+      }
+    ]
+  },
+  {
+    "id": "school",
+    "key": "school",
+    "title": "School",
+    "image_asset": "assets/360/School.png",
+    "image_url": "",
+    "icon": "meeting_room",
+    "sort_order": 2,
+    "is_active": true,
+    "hotspots": [
+      {
+        "id": "school-surroundings",
+        "key": "clouds",
+        "label": "Clouds",
+        "video_asset": "",
+        "video_url": "",
+        "yaw": 90,
+        "pitch": 0,
+        "size": 1,
+        "sort_order": 1
+      }
+    ]
+  },
   {
     "id": "cafe",
     "key": "cafe",
@@ -157,11 +161,15 @@
         "key": "car",
         "label": "Car",
         "video_asset": "",
-        "video_url": "https://drive.usercontent.google.com/download?id=1IBQYOBLDZFynCaeWK-GqVQA0IjvNqdhv&export=download&confirm=t",
+        "video_url": "https://res.cloudinary.com/dxbupqx6u/video/upload/v1785888705/car_tcgh8e.mp4",
         "yaw": -88,
         "pitch": -3,
         "size": 1,
-        "sort_order": 1
+        "sort_order": 1,
+        "front_video_url": "https://res.cloudinary.com/dxbupqx6u/video/upload/v1785888699/car_front_zm2i0s.mp4",
+        "left_video_url": "",
+        "right_video_url": "",
+        "image_url": "https://res.cloudinary.com/dxbupqx6u/image/upload/v1785888559/car_zwjnh8.jpg"
       }
     ]
   },

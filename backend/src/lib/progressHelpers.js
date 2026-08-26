@@ -224,6 +224,7 @@ export function recordProgressActivity(user, payload, now = new Date()) {
   const itemKey = String(payload.item_key || payload.itemKey || '').trim();
   const secondsSpent = Math.max(0, Math.min(24 * 60 * 60, Number(payload.seconds_spent || 0)));
   const gameCompleted = Boolean(payload.game_completed);
+  const countEvent = payload.count_event !== false;
 
   if (!VALID_CATEGORIES.has(category)) {
     const error = new Error('Invalid activity category.');
@@ -257,7 +258,7 @@ export function recordProgressActivity(user, payload, now = new Date()) {
 
   if (activityRecorded) {
     updateStreak(progress, now);
-    incrementMonthlyEvents(progress, now);
+    if (countEvent) incrementMonthlyEvents(progress, now);
   }
 
   return progress;

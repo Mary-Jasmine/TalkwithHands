@@ -10,6 +10,7 @@ import 'data_collection_screen.dart';
 import '../classifiers/sign_classifier.dart';
 import '../classifiers/tflite_sign_classifier.dart';
 import '../painters/landmark_painter.dart';
+import '../ui/background_music_region.dart';
 import '../services/tts_service.dart';
 
 const List<String> kDict = [
@@ -205,6 +206,8 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
   }
 
   bool get _usesVideoCapture => widget.captureKind == CaptureKind.video;
+
+  bool get _isLockedImagePractice => widget.lockMode && !_usesVideoCapture;
 
   String get _startCaptureLabel =>
       _usesVideoCapture ? 'Start Video Capture' : 'Start Capture';
@@ -897,34 +900,72 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: kBg,
-      body: Stack(
+      body: BackgroundMusicRegion(
+        track: null,
+        showToggle: false,
+        child: Stack(
         children: [
           if (_cameraInitialized && _cameraController != null)
             _buildCameraPreview()
           else
             Container(color: kBg),
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 54,
-            right: 14,
-            child: _buildHistory(),
-          ),
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 54,
-            left: 14,
-            child: _buildBadge(),
-          ),
+          if (!_isLockedImagePractice)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 54,
+              right: 14,
+              child: _buildHistory(),
+            ),
+          if (!_isLockedImagePractice)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 54,
+              left: 14,
+              child: _buildBadge(),
+            ),
           Positioned(
             top: 0,
             left: 0,
             right: 0,
             child: _buildTopBar(),
           ),
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: _buildBottomPanel(),
-          ),
+          if (!_loading &&
+              !_detectionArmed &&
+              _startCountdown == 0 &&
+              _currentHit != null)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 92,
+              left: 18,
+              right: 18,
+              child: _buildResultText(),
+            ),
+          if (!_isLockedImagePractice)
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: _buildBottomPanel(),
+            ),
+          if (_isLockedImagePractice && _detectionArmed)
+            Positioned(
+              left: 0,
+              right: 0,
+              top: MediaQuery.of(context).size.height * 0.56,
+              child: Center(
+                child: _buildCenteredStopCapture(),
+              ),
+            ),
+          if (_isLockedImagePractice &&
+              !_loading &&
+              !_detectionArmed &&
+              _startCountdown == 0 &&
+              _currentHit != null)
+            Positioned(
+              left: 0,
+              right: 0,
+              top: MediaQuery.of(context).size.height * 0.56,
+              child: Center(
+                child: _buildCenteredStartCapture(),
+              ),
+            ),
           if (!_loading &&
               !_detectionArmed &&
               (_buildSentence().isEmpty ||
@@ -933,6 +974,110 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
             _buildStartOverlay(),
           if (_loading) _buildLoadingOverlay(),
         ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildResultText() {
+    final hit = _currentHit;
+    if (hit == null) return const SizedBox.shrink();
+
+    return IgnorePointer(
+      child: Text(
+        hit.label.toUpperCase(),
+        textAlign: TextAlign.center,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          color: kTeal,
+          fontSize: 34,
+          fontWeight: FontWeight.w900,
+          height: 1.05,
+          shadows: [
+            Shadow(
+              color: Colors.black.withValues(alpha: 0.9),
+              blurRadius: 14,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCenteredStopCapture() {
+    return GestureDetector(
+      onTap: _finishSigningCapture,
+      child: Container(
+        width: 166,
+        height: 52,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: const Color(0xFFFF4D6A),
+          borderRadius: BorderRadius.circular(26),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFFFF4D6A).withValues(alpha: 0.36),
+              blurRadius: 18,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.stop_rounded, color: Colors.white, size: 20),
+            SizedBox(width: 6),
+            Text(
+              'Stop Capture',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCenteredStartCapture() {
+    return GestureDetector(
+      onTap: _startSigningCountdown,
+      child: Container(
+        width: 166,
+        height: 52,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: kTeal,
+          borderRadius: BorderRadius.circular(26),
+          boxShadow: [
+            BoxShadow(
+              color: kTeal.withValues(alpha: 0.36),
+              blurRadius: 18,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.play_arrow_rounded, color: Colors.black, size: 21),
+            SizedBox(width: 6),
+            Text(
+              'Start Capture',
+              style: TextStyle(
+                color: Colors.black,
+                fontSize: 16,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -994,16 +1139,52 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
       ),
       child: Row(
         children: [
-          Text(
-            widget.title,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.3,
+          GestureDetector(
+            onTap: () => Navigator.of(context).maybePop(),
+            child: Container(
+              width: 44,
+              height: 44,
+              margin: const EdgeInsets.only(right: 10),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF39D8E8), Color(0xFF1387C9)],
+                ),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.8),
+                  width: 1.4,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: kTeal.withValues(alpha: 0.5),
+                    blurRadius: 12,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.arrow_back_rounded,
+                color: Colors.white,
+                size: 24,
+              ),
             ),
           ),
-          const Spacer(),
+          Expanded(
+            child: Text(
+              widget.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.3,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
           _TopBtn(
             label: _speakOn ? 'Voice' : 'Muted',
             active: _speakOn,
@@ -1066,14 +1247,23 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
       holdBar = _holdFrames / _holdNeed;
     }
 
+    final badgeWidth = MediaQuery.sizeOf(context).width * 0.25;
+
     return Container(
-      width: 170,
-      constraints: const BoxConstraints(minWidth: 150),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      width: badgeWidth,
+      constraints: BoxConstraints(minWidth: badgeWidth),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
       decoration: BoxDecoration(
         color: const Color(0xD0000000),
         border: Border.all(color: color, width: 2),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.35),
+            blurRadius: 14,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1081,9 +1271,11 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
         children: [
           Text(
             label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: color,
-              fontSize: 32,
+              fontSize: 24,
               fontWeight: FontWeight.w900,
               height: 1,
             ),
@@ -1091,17 +1283,21 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
           const SizedBox(height: 2),
           Text(
             typeLabel,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               color: Color(0x66FFFFFF),
-              fontSize: 10,
-              letterSpacing: 0.5,
+              fontSize: 9,
+              letterSpacing: 0.3,
             ),
           ),
           if (percent.isNotEmpty) ...[
             const SizedBox(height: 4),
             Text(
               percent,
-              style: const TextStyle(color: Color(0x88FFFFFF), fontSize: 11),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: Color(0x88FFFFFF), fontSize: 9),
             ),
             const SizedBox(height: 3),
             if (hit != null && hit.isModelConfidence)
@@ -1112,7 +1308,9 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
           const SizedBox(height: 2),
           Text(
             _detectionArmed ? 'press $_stopCaptureLabel when done' : 'ready',
-            style: const TextStyle(color: Color(0x44FFFFFF), fontSize: 9),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: Color(0x44FFFFFF), fontSize: 8),
           ),
         ],
       ),
@@ -1187,121 +1385,139 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
         mainAxisSize: MainAxisSize.min,
         children: [
           if (!widget.lockMode) ...[
-            Wrap(
-              alignment: WrapAlignment.center,
-              spacing: 6,
-              runSpacing: 6,
+            Row(
               children: [
-                _ModeBtn(
-                  label: 'Words',
-                  active: _mode == DetectionMode.words,
-                  onTap: () => _setMode(DetectionMode.words),
+                Expanded(
+                  child: _ModeBtn(
+                    label: 'Words',
+                    active: _mode == DetectionMode.words,
+                    onTap: () => _setMode(DetectionMode.words),
+                  ),
                 ),
-                _ModeBtn(
-                  label: 'A-Z Spell',
-                  active: _mode == DetectionMode.az,
-                  onTap: () => _setMode(DetectionMode.az),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: _ModeBtn(
+                    label: 'A-Z',
+                    active: _mode == DetectionMode.az,
+                    onTap: () => _setMode(DetectionMode.az),
+                  ),
                 ),
-                _ModeBtn(
-                  label: '0-20',
-                  active: _mode == DetectionMode.num,
-                  onTap: () => _setMode(DetectionMode.num),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: _ModeBtn(
+                    label: 'Num',
+                    active: _mode == DetectionMode.num,
+                    onTap: () => _setMode(DetectionMode.num),
+                  ),
                 ),
-                _ModeBtn(
-                  label: 'Motion',
-                  active: _mode == DetectionMode.motion,
-                  onTap: () => _setMode(DetectionMode.motion),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: _ModeBtn(
+                    label: 'Motion',
+                    active: _mode == DetectionMode.motion,
+                    onTap: () => _setMode(DetectionMode.motion),
+                  ),
                 ),
               ],
             ),
             const SizedBox(height: 8),
           ],
           if (_mode == DetectionMode.motion) ...[
-            Wrap(
-              alignment: WrapAlignment.center,
-              spacing: 6,
-              runSpacing: 6,
+            Row(
               children: [
-                _ModeBtn(
-                  label: 'Motion Words',
-                  active: _motionCategory == MotionCategory.words,
-                  onTap: () => _setMotionCategory(MotionCategory.words),
+                Expanded(
+                  child: _ModeBtn(
+                    label: 'Words',
+                    active: _motionCategory == MotionCategory.words,
+                    onTap: () => _setMotionCategory(MotionCategory.words),
+                  ),
                 ),
-                _ModeBtn(
-                  label: 'Motion A-Z',
-                  active: _motionCategory == MotionCategory.az,
-                  onTap: () => _setMotionCategory(MotionCategory.az),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: _ModeBtn(
+                    label: 'A-Z',
+                    active: _motionCategory == MotionCategory.az,
+                    onTap: () => _setMotionCategory(MotionCategory.az),
+                  ),
                 ),
-                _ModeBtn(
-                  label: 'Motion 0-20',
-                  active: _motionCategory == MotionCategory.num,
-                  onTap: () => _setMotionCategory(MotionCategory.num),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: _ModeBtn(
+                    label: 'Num',
+                    active: _motionCategory == MotionCategory.num,
+                    onTap: () => _setMotionCategory(MotionCategory.num),
+                  ),
                 ),
               ],
             ),
             const SizedBox(height: 8),
           ],
-          Container(
-            width: double.infinity,
-            constraints: const BoxConstraints(minHeight: 44, maxHeight: 82),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-            decoration: BoxDecoration(
-              color: const Color(0x0DFFFFFF),
-              border: Border.all(color: const Color(0x4D00E5CC), width: 0.5),
-              borderRadius: BorderRadius.circular(8),
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: MediaQuery.sizeOf(context).height * 0.25,
             ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    sentence.isEmpty
-                        ? (_detectionArmed
-                            ? '$_activeCaptureText press $_stopCaptureLabel when done'
-                            : (_captureMessage ??
-                                'Press $_startCaptureLabel, then get ready...'))
-                        : visibleSentence,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: sentence.isEmpty
-                          ? const Color(0x33FFFFFF)
-                          : Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
-                      height: 1.4,
-                    ),
-                  ),
-                ),
-                if (spellingMode && _curWord.isNotEmpty) ...[
-                  const SizedBox(width: 8),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: const Color(0x2600E5CC),
-                      border: Border.all(
-                        color: const Color(0x8000E5CC),
-                        width: 1,
-                      ),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
+            child: Container(
+              width: double.infinity,
+              constraints: const BoxConstraints(minHeight: 96),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+              decoration: BoxDecoration(
+                color: const Color(0x0DFFFFFF),
+                border: Border.all(color: const Color(0x4D00E5CC), width: 0.5),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
                     child: Text(
-                      _curWord,
-                      style: const TextStyle(
-                        color: kTeal,
-                        fontSize: 15,
+                      sentence.isEmpty
+                          ? (_detectionArmed
+                              ? '$_activeCaptureText press $_stopCaptureLabel when done'
+                              : (_captureMessage ??
+                                  'Press $_startCaptureLabel, then get ready...'))
+                          : visibleSentence,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: sentence.isEmpty
+                            ? const Color(0x33FFFFFF)
+                            : Colors.white,
+                        fontSize: 22,
                         fontWeight: FontWeight.w700,
+                        height: 1.4,
                       ),
                     ),
                   ),
+                  if (spellingMode && _curWord.isNotEmpty) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: const Color(0x2600E5CC),
+                        border: Border.all(
+                          color: const Color(0x8000E5CC),
+                          width: 1,
+                        ),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        _curWord,
+                        style: const TextStyle(
+                          color: kTeal,
+                          fontSize: 21,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
           const SizedBox(height: 7),
           if (suggestions.isNotEmpty) ...[
             SizedBox(
-              height: 30,
+              height: 46,
               child: ListView(
                 scrollDirection: Axis.horizontal,
                 children: suggestions
@@ -1312,8 +1528,8 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
                           onTap: () => setState(() => _commitWord(word)),
                           child: Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 4,
+                              horizontal: 16,
+                              vertical: 9,
                             ),
                             decoration: BoxDecoration(
                               color: const Color(0x1A00E5CC),
@@ -1327,7 +1543,7 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
                               word,
                               style: const TextStyle(
                                 color: kTeal,
-                                fontSize: 12,
+                                fontSize: 16,
                               ),
                             ),
                           ),
@@ -1340,8 +1556,8 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
             const SizedBox(height: 7),
           ],
           Wrap(
-            spacing: 6,
-            runSpacing: 6,
+            spacing: 8,
+            runSpacing: 8,
             children: [
               _ActBtn(label: 'Delete', onTap: _deleteLast),
               if (spellingMode) _ActBtn(label: 'Space', onTap: _addSpace),
@@ -1349,20 +1565,27 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
                 _ActBtn(
                   label: _startCaptureLabel,
                   accent: true,
+                  icon: Icons.play_arrow_rounded,
                   onTap: _startSigningCountdown,
                 ),
               if (_detectionArmed)
                 _ActBtn(
                   label: _stopCaptureLabel,
                   accent: true,
+                  icon: Icons.stop_rounded,
                   onTap: _finishSigningCapture,
                 ),
               _ActBtn(
                 label: 'Speak all',
                 accent: true,
+                icon: Icons.volume_up_rounded,
                 onTap: _speakFull,
               ),
-              _ActBtn(label: 'Clear', onTap: _clearAll),
+              _ActBtn(
+                label: 'Clear',
+                icon: Icons.refresh_rounded,
+                onTap: _clearAll,
+              ),
             ],
           ),
         ],
@@ -1373,85 +1596,105 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
   Widget _buildStartOverlay() {
     final isCountingDown = _startCountdown > 0;
     return Positioned.fill(
-      child: Container(
-        color: const Color(0x78000000),
-        padding: const EdgeInsets.symmetric(horizontal: 28),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 320),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 112,
-                  height: 112,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: const Color(0xD0000000),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: kTeal, width: 2),
-                  ),
-                  child: Text(
-                    isCountingDown ? '$_startCountdown' : 'Ready',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: kTeal,
-                      fontSize: isCountingDown ? 54 : 24,
-                      fontWeight: FontWeight.w900,
-                      height: 1,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 18),
-                Text(
-                  isCountingDown
-                      ? 'Position your hand in the frame'
-                      : 'Press $_startCaptureLabel before signing',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  isCountingDown
-                      ? 'Capture starts after the countdown. The translation is confirmed when you stop.'
-                      : 'The app will wait $_prepareSeconds seconds so you can position properly, then capture $_captureNoun data for detection.',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Color(0xB3FFFFFF),
-                    fontSize: 13,
-                    height: 1.35,
-                  ),
-                ),
-                const SizedBox(height: 18),
-                if (!isCountingDown)
-                  GestureDetector(
-                    onTap: _startSigningCountdown,
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(vertical: 13),
+      child: Stack(
+        children: [
+          Container(
+            color: const Color(0x78000000),
+            padding: const EdgeInsets.symmetric(horizontal: 28),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 320),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 112,
+                      height: 112,
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
-                        color: kTeal,
-                        borderRadius: BorderRadius.circular(8),
+                        color: const Color(0xD0000000),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: kTeal, width: 2),
                       ),
                       child: Text(
-                        _startCaptureLabel,
-                        style: const TextStyle(
-                          color: Colors.black,
-                          fontSize: 15,
+                        isCountingDown ? '$_startCountdown' : 'Ready',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: kTeal,
+                          fontSize: isCountingDown ? 54 : 24,
                           fontWeight: FontWeight.w900,
+                          height: 1,
                         ),
                       ),
                     ),
-                  ),
-              ],
+                    const SizedBox(height: 18),
+                    Text(
+                      isCountingDown
+                          ? 'Position your hand in the frame'
+                          : 'Press capture before signing',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      isCountingDown
+                          ? 'Capture starts after the countdown.'
+                          : 'The app will wait $_prepareSeconds seconds so you can position properly.',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Color(0xB3FFFFFF),
+                        fontSize: 13,
+                        height: 1.35,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    if (!isCountingDown)
+                      Center(
+                        child: GestureDetector(
+                          onTap: _startSigningCountdown,
+                          child: Container(
+                            width: 148,
+                            height: 52,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: kTeal,
+                              borderRadius: BorderRadius.circular(26),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: kTeal.withValues(alpha: 0.36),
+                                  blurRadius: 18,
+                                  offset: const Offset(0, 6),
+                                ),
+                              ],
+                            ),
+                            child: const Text(
+                              'Capture',
+                              style: TextStyle(
+                                color: Colors.black,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             ),
           ),
-        ),
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 10,
+            left: 14,
+            child: _OverlayBackButton(
+              onTap: () => Navigator.of(context).maybePop(),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1459,28 +1702,132 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
   Widget _buildLoadingOverlay() {
     return Container(
       color: kBg,
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(
-              width: 44,
-              height: 44,
-              child: CircularProgressIndicator(
-                color: kTeal,
-                strokeWidth: 3,
+      child: Stack(
+        children: [
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 10,
+            left: 14,
+            child: GestureDetector(
+              onTap: () => Navigator.of(context).maybePop(),
+              child: Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFF39D8E8), Color(0xFF1387C9)],
+                  ),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.8),
+                    width: 1.4,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: kTeal.withValues(alpha: 0.5),
+                      blurRadius: 12,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.arrow_back_rounded,
+                  color: Colors.white,
+                  size: 24,
+                ),
               ),
             ),
-            const SizedBox(height: 16),
-            Text(
-              _loadText,
-              style: const TextStyle(
-                color: Color(0x88FFFFFF),
-                fontSize: 14,
-              ),
-              textAlign: TextAlign.center,
+          ),
+          Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 84,
+                  height: 84,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [Color(0xFF39D8E8), Color(0xFF1387C9)],
+                    ),
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: kTeal.withValues(alpha: 0.45),
+                        blurRadius: 22,
+                        spreadRadius: 1,
+                      ),
+                    ],
+                  ),
+                  child: const SizedBox(
+                    width: 40,
+                    height: 40,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 3.4,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 32),
+                  child: Text(
+                    _loadText,
+                    style: const TextStyle(
+                      color: Color(0xCCFFFFFF),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OverlayBackButton extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _OverlayBackButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF39D8E8), Color(0xFF1387C9)],
+          ),
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.8),
+            width: 1.4,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: _SignDetectorScreenState.kTeal.withValues(alpha: 0.5),
+              blurRadius: 12,
+              offset: const Offset(0, 2),
             ),
           ],
+        ),
+        child: const Icon(
+          Icons.arrow_back_rounded,
+          color: Colors.white,
+          size: 24,
         ),
       ),
     );
@@ -1503,20 +1850,36 @@ class _TopBtn extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: active ? const Color(0x3300E5CC) : const Color(0x99000000),
+          gradient: active
+              ? const LinearGradient(
+                  colors: [Color(0xFF39D8E8), Color(0xFF1387C9)],
+                )
+              : null,
+          color: active ? null : const Color(0x99000000),
           border: Border.all(
-            color: active ? const Color(0x9900E5CC) : const Color(0x33FFFFFF),
-            width: 0.5,
+            color: active
+                ? Colors.white.withValues(alpha: 0.75)
+                : const Color(0x33FFFFFF),
+            width: active ? 1.2 : 0.5,
           ),
-          borderRadius: BorderRadius.circular(7),
+          borderRadius: BorderRadius.circular(999),
+          boxShadow: active
+              ? [
+                  BoxShadow(
+                    color: const Color(0xFF00E5CC).withValues(alpha: 0.45),
+                    blurRadius: 8,
+                  ),
+                ]
+              : null,
         ),
         child: Text(
           label,
           style: TextStyle(
-            color: active ? const Color(0xFF00E5CC) : const Color(0xB3FFFFFF),
+            color: active ? Colors.white : const Color(0xB3FFFFFF),
             fontSize: 12,
+            fontWeight: active ? FontWeight.w800 : FontWeight.w500,
           ),
         ),
       ),
@@ -1540,21 +1903,40 @@ class _ModeBtn extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+        alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: active ? const Color(0x2E00E5CC) : const Color(0x12FFFFFF),
+          gradient: active
+              ? const LinearGradient(
+                  colors: [Color(0xFF39D8E8), Color(0xFF1387C9)],
+                )
+              : null,
+          color: active ? null : const Color(0x14FFFFFF),
           border: Border.all(
-            color: active ? const Color(0x8000E5CC) : const Color(0x1FFFFFFF),
-            width: 0.5,
+            color: active
+                ? Colors.white.withValues(alpha: 0.8)
+                : const Color(0x1FFFFFFF),
+            width: active ? 1.4 : 0.5,
           ),
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(999),
+          boxShadow: active
+              ? [
+                  BoxShadow(
+                    color: const Color(0xFF00E5CC).withValues(alpha: 0.5),
+                    blurRadius: 10,
+                  ),
+                ]
+              : null,
         ),
         child: Text(
           label,
+          textAlign: TextAlign.center,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: TextStyle(
-            color: active ? const Color(0xFF00E5CC) : const Color(0x59FFFFFF),
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
+            color: active ? Colors.white : const Color(0x77FFFFFF),
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
           ),
         ),
       ),
@@ -1566,11 +1948,13 @@ class _ActBtn extends StatelessWidget {
   final String label;
   final bool accent;
   final VoidCallback onTap;
+  final IconData? icon;
 
   const _ActBtn({
     required this.label,
     this.accent = false,
     required this.onTap,
+    this.icon,
   });
 
   @override
@@ -1578,22 +1962,51 @@ class _ActBtn extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
         decoration: BoxDecoration(
-          color: accent ? const Color(0x2300E5CC) : const Color(0x0FFFFFFF),
+          gradient: accent
+              ? const LinearGradient(
+                  colors: [Color(0xFF39D8E8), Color(0xFF1387C9)],
+                )
+              : null,
+          color: accent ? null : const Color(0x0FFFFFFF),
           border: Border.all(
-            color: accent ? const Color(0x8000E5CC) : const Color(0x1FFFFFFF),
-            width: 0.5,
+            color: accent
+                ? Colors.white.withValues(alpha: 0.8)
+                : const Color(0x1FFFFFFF),
+            width: accent ? 1.4 : 0.5,
           ),
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(999),
+          boxShadow: accent
+              ? [
+                  BoxShadow(
+                    color: const Color(0xFF00E5CC).withValues(alpha: 0.5),
+                    blurRadius: 12,
+                    offset: const Offset(0, 3),
+                  ),
+                ]
+              : null,
         ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: accent ? const Color(0xFF00E5CC) : const Color(0x8CFFFFFF),
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-          ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(
+                icon,
+                size: 16,
+                color: accent ? Colors.white : const Color(0x8CFFFFFF),
+              ),
+              const SizedBox(width: 6),
+            ],
+            Text(
+              label,
+              style: TextStyle(
+                color: accent ? Colors.white : const Color(0x8CFFFFFF),
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
         ),
       ),
     );

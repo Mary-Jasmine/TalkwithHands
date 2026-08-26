@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../services/background_music_service.dart';
+import '../ui/background_music_region.dart';
 import '../ui/app_shell.dart';
 import 'auth_screen.dart';
 
@@ -9,9 +11,11 @@ class LandingScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: AppBackground(
-        imageAsset: 'assets/images/home_bg_clean.png',
-        child: SafeArea(
+      body: BackgroundMusicRegion(
+        track: BackgroundMusicTrack.page,
+        child: AppBackground(
+          imageAsset: 'assets/images/home_bg_clean.png',
+          child: SafeArea(
           child: LayoutBuilder(
             builder: (context, constraints) {
               final compact =
@@ -30,46 +34,13 @@ class LandingScreen extends StatelessWidget {
                   ),
                   child: Column( // Main column for logo, title, and button
                     children: [
-                      Wrap(
-                        spacing: 15,
-                        runSpacing: 22,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        alignment: WrapAlignment.spaceBetween,
-                        children: [
-                          AppLogo(size: logoSize), // Use adjusted logo size
-                          Row( // Row for title and subtitle
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              GlassButton(
-                                label: 'Log In',
-                                onTap: () {
-                                  Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (_) => const AuthScreen( 
-                                          initialTab: AuthTab.login),
-                                    ),
-                                  );
-                                },
-                              ),
-                              const SizedBox(width: 12),
-                              GlassButton(
-                                label: 'Sign Up',
-                                onTap: () {
-                                  Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (_) => const AuthScreen(
-                                          initialTab: AuthTab.register),
-                                    ),
-                                  );
-                                },
-                              ),
-                            ],
-                          ),
-                        ],
+                      Align(
+                        alignment: Alignment.topLeft,
+                        child: AppLogo(size: logoSize), // Use adjusted logo size
                       ),
                       SizedBox(height: compact ? 160 : 196),
                       Transform.rotate(
-                        angle: -0.08,
+                        angle: 0.0,
                         child: Container(
                           width: titleWidth,
                           padding: EdgeInsets.symmetric(
@@ -79,10 +50,10 @@ class LandingScreen extends StatelessWidget {
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(22),
-                            border: Border.all(color: Colors.black, width: 2.2),
+                            border: Border.all(color: const Color.fromARGB(255, 0, 0, 0), width: 2.2),
                             boxShadow: const [
                               BoxShadow(
-                                color: Colors.black54,
+                                color: Color.fromARGB(136, 216, 209, 209),
                                 offset: Offset(10, 10),
                                 blurRadius: 0,
                               ),
@@ -94,7 +65,7 @@ class LandingScreen extends StatelessWidget {
                             ],
                           ),
                           child: Transform.rotate(
-                            angle: 0.08,
+                            angle: 0.0,
                             child: Text(
                               'Talk with\nHands',
                               textAlign: TextAlign.center,
@@ -103,7 +74,7 @@ class LandingScreen extends StatelessWidget {
                                 height: 1.02,
                                 fontStyle: FontStyle.italic,
                                 fontWeight: FontWeight.w900,
-                                color: Colors.black,
+                                color: const Color.fromARGB(255, 0, 0, 0),
                                 shadows: const [
                                   Shadow(
                                     color: Color(0x55000000),
@@ -116,12 +87,101 @@ class LandingScreen extends StatelessWidget {
                           ),
                         ),
                       ),
+                      SizedBox(height: compact ? 200 : 56),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          _LandingPillButton(
+                            label: 'Login',
+                            background: Colors.white,
+                            borderColor: const Color.fromARGB(255, 171, 184, 226),
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const AuthScreen(
+                                      initialTab: AuthTab.login),
+                                ),
+                              );
+                            },
+                          ),
+                          const SizedBox(width: 30),
+                          _LandingPillButton(
+                            label: 'Sign in',
+                            background: const Color.fromARGB(255, 255, 139, 186),
+                            borderColor: const Color.fromARGB(111, 99, 88, 101),
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const AuthScreen(
+                                      initialTab: AuthTab.register),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
                       SizedBox(height: compact ? 68 : 120),
                     ],
                   ),
                 ),
               );
             },
+          ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LandingPillButton extends StatelessWidget {
+  final String label;
+  final Color background;
+  final Color? borderColor;
+  final VoidCallback onTap;
+
+  const _LandingPillButton({
+    required this.label,
+    required this.background,
+    required this.onTap,
+    this.borderColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: onTap,
+        child: Container(
+          decoration: BoxDecoration(
+            color: background,
+            borderRadius: BorderRadius.circular(999),
+            boxShadow: [
+              if (borderColor != null)
+                BoxShadow(
+                  color: borderColor!,
+                  blurRadius: 10,
+                  spreadRadius: 1,
+                  offset: const Offset(0, 3),
+                ),
+              const BoxShadow(
+                color: Colors.black38,
+                blurRadius: 6,
+                offset: Offset(0, 2),
+              ),
+            ],
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: Colors.black,
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ),
       ),

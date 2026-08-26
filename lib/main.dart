@@ -4,8 +4,11 @@ import 'package:firebase_core/firebase_core.dart'; // Import para sa Firebase Co
 import 'firebase_options.dart'; // Import para sa auto-generated configuration
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
+import 'services/background_music_service.dart';
+import 'services/activity_time_service.dart';
 import 'screens/splash_screen.dart';
 import 'screens/reset_password_screen.dart';
+import 'ui/background_music_region.dart';
 
 void main() async {
   // Sinisigurado nito na ang lahat ng plugins (tulad ng Firebase) ay naka-initialize
@@ -19,6 +22,7 @@ void main() async {
 
   // Loads env values (e.g., API_BASE_URL)
   await dotenv.load(fileName: 'lib/.env');
+  ActivityTimeService.instance.start();
 
   // Status bar configuration para sa malinis na UI
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
@@ -52,8 +56,33 @@ class TalkWithHandsApp extends StatelessWidget {
               displayColor: Colors.white,
             ),
       ),
+      builder: (context, child) {
+        return Stack(
+          fit: StackFit.expand,
+          clipBehavior: Clip.none,
+          children: [
+            if (child != null) child,
+            const Positioned(
+              right: 14,
+              bottom: 14,
+              width: 52,
+              height: 52,
+              child: SafeArea(
+                top: false,
+                left: false,
+                minimum: EdgeInsets.zero,
+                child: Align(
+                  alignment: Alignment.bottomRight,
+                  child: MusicToggleButton(),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
       // Ang SplashScreen ang unang lalabas bago mag-login
       home: const SplashScreen(),
+      navigatorObservers: [appRouteObserver],
       onGenerateRoute: (settings) {
         final uri = Uri.tryParse(settings.name ?? '');
         if (uri != null && uri.path == '/reset-password') {

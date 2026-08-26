@@ -1,11 +1,15 @@
 import 'dart:math' as math;
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../models/number_sign.dart';
 import '../services/number_service.dart';
+import '../services/background_music_service.dart';
 import '../services/progress_service.dart';
+import '../ui/background_music_region.dart';
 import '../ui/app_shell.dart';
+import '../utils/url_helper.dart';
 import '../utils/video_url_utils.dart';
 import 'sign_detector_screen.dart';
 import 'tutorial_video_screen.dart';
@@ -79,6 +83,9 @@ class _NumbersScreenState extends State<NumbersScreen> {
     if (!hasPlayableVideoSource(
       videoAsset: sign.videoAsset,
       videoUrl: sign.videoUrl,
+      frontVideoUrl: sign.frontVideoUrl,
+      leftVideoUrl: sign.leftVideoUrl,
+      rightVideoUrl: sign.rightVideoUrl,
     )) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -93,8 +100,13 @@ class _NumbersScreenState extends State<NumbersScreen> {
       MaterialPageRoute(
         builder: (_) => TutorialVideoScreen(
           title: sign.title,
+          imageAsset: sign.imageAsset,
+          imageUrl: sign.imageUrl,
           videoAsset: sign.videoAsset,
           videoUrl: sign.videoUrl,
+          frontVideoUrl: sign.frontVideoUrl,
+          leftVideoUrl: sign.leftVideoUrl,
+          rightVideoUrl: sign.rightVideoUrl,
           activityCategory: 'number',
         ),
       ),
@@ -110,7 +122,9 @@ class _NumbersScreenState extends State<NumbersScreen> {
         onClose: () => Navigator.of(context).pop(),
         activeScreen: 'Numbers',
       ),
-      body: AppBackground(
+      body: BackgroundMusicRegion(
+        track: BackgroundMusicTrack.page,
+        child: AppBackground(
         child: Stack(
           children: [
             const Positioned.fill(
@@ -304,6 +318,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
           ),
         ),
           ],
+        ),
         ),
       ),
     );
@@ -803,10 +818,13 @@ class _NumberImage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (sign.imageUrl.isNotEmpty) {
-      return Image.network(
-        sign.imageUrl,
+      return CachedNetworkImage(
+        imageUrl: getOptimizedUrl(sign.imageUrl, width: 400),
         fit: fit,
-        errorBuilder: (_, __, ___) => _ImageFallback(label: sign.title),
+        placeholder: (_, __) => const Center(
+          child: CircularProgressIndicator(color: kAccent, strokeWidth: 2),
+        ),
+        errorWidget: (_, __, ___) => _ImageFallback(label: sign.title),
       );
     }
     return Image.asset(

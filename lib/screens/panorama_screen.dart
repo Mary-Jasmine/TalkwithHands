@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
@@ -11,6 +13,7 @@ import '../services/api_config.dart';
 import '../services/panorama_service.dart';
 import '../services/video_player_service.dart';
 import '../ui/app_shell.dart';
+import '../utils/url_helper.dart';
 
 class PanoramaScreen extends StatefulWidget {
   final String userName;
@@ -21,12 +24,35 @@ class PanoramaScreen extends StatefulWidget {
 }
 
 class _PanoramaScreenState extends State<PanoramaScreen> {
+  // ── Cross-instance cache ─────────────────────────────────────────────
+  // Navigator.push creates a BRAND NEW PanoramaScreen (and thus a brand
+  // new State) every time the user opens "360 Pictures" from the menu,
+  // even if they were just here before. These `static` fields live on
+  // the class, not the State instance, so they survive that recreation:
+  // the scene list, the three.min.js source, and the fully-built panorama
+  // HTML page are only fetched/built ONCE per app session. Every visit
+  // after the first reuses them instantly instead of reloading.
+  static List<PanoramaScene>? _cachedScenes;
+  static String? _cachedThreeJsSource;
+  static String? _cachedFullHtml;
+
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   late final WebViewController _webViewController;
   late Future<List<PanoramaScene>> _sceneFuture;
   List<PanoramaScene> _scenes = [];
   int _selectedIndex = 0;
   bool _viewerMode = false;
+  String _threeJsSource = '';
+  Future<void>? _threeJsFuture;
+
+  // ── Single-load panorama state ──────────────────────────────────────────
+  // All scenes are baked into one big HTML page (loaded once). Switching
+  // scenes afterwards is just a JS call (window.switchScene), not a full
+  // WebView reload, so textures stay cached in memory between switches.
+  bool _fullHtmlRequested = false;
+  bool _fullHtmlReady = false;
+  bool _isFullHtmlLoad = false;
+  int _pendingSwitchIndex = -1;
 
   String get _baseUrl {
     final baseUrl = ApiConfig.baseUrl;
@@ -44,8 +70,45 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
         'HotspotBridge',
         onMessageReceived: _onHotspotMessage,
       )
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onPageFinished: (_) {
+            if (!_isFullHtmlLoad) return;
+            _fullHtmlReady = true;
+            if (_pendingSwitchIndex != -1) {
+              final idx = _pendingSwitchIndex;
+              _pendingSwitchIndex = -1;
+              _webViewController.runJavaScript('window.switchScene($idx);');
+            }
+          },
+        ),
+      )
       ..loadHtmlString(_buildEmptyHtml('Loading 360 pictures...'));
-    _sceneFuture = PanoramaService().listPanoramaScenes();
+
+    _threeJsFuture = _loadThreeJs();
+
+    if (_cachedScenes != null) {
+      // Already fetched during an earlier visit this session — resolve
+      // instantly (no spinner) and kick off loading the (also cached)
+      // full panorama page right away.
+      _scenes = _cachedScenes!;
+      _sceneFuture = Future.value(_cachedScenes!);
+      unawaited(_loadFullPanoramaHtml());
+    } else {
+      _sceneFuture = PanoramaService().listPanoramaScenes();
+    }
+  }
+
+  Future<void> _loadThreeJs() async {
+    if (_cachedThreeJsSource != null) {
+      _threeJsSource = _cachedThreeJsSource!;
+      return;
+    }
+    if (_threeJsSource.isNotEmpty) return;
+    final source = await rootBundle.loadString('assets/js/three.min.js');
+    _cachedThreeJsSource = source;
+    if (!mounted) return;
+    setState(() => _threeJsSource = source);
   }
 
   String _assetUrl(String assetPath) {
@@ -54,17 +117,54 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
   }
 
   String _imageUrl(PanoramaScene scene) {
-    if (scene.imageUrl.trim().isNotEmpty) return scene.imageUrl.trim();
+    if (scene.imageUrl.trim().isNotEmpty) {
+      return getOptimizedUrl(scene.imageUrl, width: 1600);
+    }
     return _assetUrl(scene.imageAsset);
   }
 
-  void _loadPanorama(int index) {
+  Future<void> _loadPanorama(int index) async {
     if (index < 0 || index >= _scenes.length) return;
+    if (!mounted) return;
     setState(() {
       _selectedIndex = index;
       _viewerMode = true;
     });
-    _webViewController.loadHtmlString(_buildHtml(_scenes[index]));
+
+    // Make sure the single big HTML (with all scenes baked in) is loading
+    // or already loaded before we try to switch to it.
+    unawaited(_loadFullPanoramaHtml());
+
+    if (_fullHtmlReady) {
+      _webViewController.runJavaScript('window.switchScene($index);');
+    } else {
+      // Page isn't finished loading yet — onPageFinished will pick this up
+      // and switch to it as soon as window.switchScene exists.
+      _pendingSwitchIndex = index;
+    }
+  }
+
+  // Loads the single HTML page containing every scene, once. Subsequent
+  // scene changes are handled entirely in JS via window.switchScene(index),
+  // so the WebView is never reloaded again.
+  Future<void> _loadFullPanoramaHtml() async {
+    if (_fullHtmlRequested) return;
+    _fullHtmlRequested = true;
+
+    if (_cachedFullHtml != null) {
+      // Built during an earlier visit this session — reuse as-is, no need
+      // to wait for three.js or rebuild/re-encode the scenes JSON again.
+      _isFullHtmlLoad = true;
+      await _webViewController.loadHtmlString(_cachedFullHtml!);
+      return;
+    }
+
+    await (_threeJsFuture ??= _loadThreeJs());
+    if (!mounted) return;
+    _isFullHtmlLoad = true;
+    final html = _buildFullHtml(_scenes);
+    _cachedFullHtml = html;
+    await _webViewController.loadHtmlString(html);
   }
 
   void _onHotspotMessage(JavaScriptMessage message) {
@@ -119,10 +219,16 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
 </html>
 ''';
 
-  String _buildHtml(PanoramaScene sceneData) {
-    final hotspotsJson = jsonEncode(
-        sceneData.hotspots.map((item) => item.toViewerJson()).toList());
-    final imageUrl = _imageUrl(sceneData);
+  String _buildFullHtml(List<PanoramaScene> scenes) {
+    final scenesJson = jsonEncode(scenes
+        .map((s) => {
+              'id': s.id,
+              'title': s.title,
+              'imageUrl': _imageUrl(s),
+              'hotspots': s.hotspots.map((h) => h.toViewerJson()).toList(),
+            })
+        .toList());
+    final initialIndex = _selectedIndex < scenes.length ? _selectedIndex : 0;
 
     return '''
 <!DOCTYPE html>
@@ -175,9 +281,10 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
 <body>
 <div id="hotspots"></div>
 <div id="hint">Drag to look around</div>
-<script src="$_baseUrl/assets/three.min.js"></script>
+<script>$_threeJsSource</script>
 <script>
-  const hotspotData = $hotspotsJson;
+  const scenesData = $scenesJson;
+  let currentIndex = 0;
 
   setTimeout(() => {
     const h = document.getElementById('hint');
@@ -194,30 +301,23 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
 
   const geometry = new THREE.SphereGeometry(500, 60, 40);
   geometry.scale(-1, 1, 1);
-  const texture = new THREE.TextureLoader().load('$imageUrl');
-  const material = new THREE.MeshBasicMaterial({map: texture});
+  const material = new THREE.MeshBasicMaterial();
   const sphere = new THREE.Mesh(geometry, material);
   scene.add(sphere);
 
-  const hotspotRoot = document.getElementById('hotspots');
-  const hotspotItems = hotspotData.map(item => {
-    const el = document.createElement('button');
-    el.type = 'button';
-    el.className = 'hotspot';
-    el.textContent = item.label;
-    el.style.transform = 'translate(-50%, -50%) scale(' + String(item.size || 1) + ')';
-    el.addEventListener('pointerdown', e => e.stopPropagation());
-    el.addEventListener('click', e => {
-      e.stopPropagation();
-      HotspotBridge.postMessage(JSON.stringify(item));
+  // ── Texture cache: each scene's image is fetched once, then kept in
+  // memory so re-visiting a scene is instant. ──────────────────────────
+  const loader = new THREE.TextureLoader();
+  const textures = new Array(scenesData.length).fill(null);
+  function loadTexture(i) {
+    return new Promise(resolve => {
+      if (textures[i]) { resolve(textures[i]); return; }
+      loader.load(scenesData[i].imageUrl, tex => { textures[i] = tex; resolve(tex); });
     });
-    hotspotRoot.appendChild(el);
-    return { data: item, el, point: hotspotPoint(item.yaw, item.pitch) };
-  });
+  }
 
-  let isInteracting = false, autoRotate = true;
-  let lon = 0, lat = 0, downX = 0, downY = 0, downLon = 0, downLat = 0;
-  let lastPinchDist = 0;
+  const hotspotRoot = document.getElementById('hotspots');
+  let hotspotItems = [];
 
   function hotspotPoint(yaw, pitch) {
     const radius = 460;
@@ -229,6 +329,47 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
       radius * Math.cos(phi) * Math.sin(theta)
     );
   }
+
+  function renderHotspots(list) {
+    hotspotRoot.innerHTML = '';
+    hotspotItems = list.map(item => {
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'hotspot';
+      el.textContent = item.label;
+      el.style.transform = 'translate(-50%, -50%) scale(' + String(item.size || 1) + ')';
+      el.addEventListener('pointerdown', e => e.stopPropagation());
+      el.addEventListener('click', e => {
+        e.stopPropagation();
+        HotspotBridge.postMessage(JSON.stringify(item));
+      });
+      hotspotRoot.appendChild(el);
+      return { data: item, el, point: hotspotPoint(item.yaw, item.pitch) };
+    });
+  }
+
+  // ── Called from Flutter every time the user switches scenes. No page
+  // reload — just swaps the sphere's texture and rebuilds hotspots. ────
+  window.switchScene = async function(i) {
+    if (i < 0 || i >= scenesData.length) return;
+    currentIndex = i;
+    lon = 0; lat = 0; autoRotate = true;
+    const tex = await loadTexture(i);
+    material.map = tex;
+    material.needsUpdate = true;
+    renderHotspots(scenesData[i].hotspots);
+  };
+
+  // Called from Flutter to rotate camera to a hotspot
+  window.navigateTo = function(yaw, pitch) {
+    autoRotate = false;
+    lon = yaw;
+    lat = -pitch; // pitch is inverted in this coordinate system
+  };
+
+  let isInteracting = false, autoRotate = true;
+  let lon = 0, lat = 0, downX = 0, downY = 0, downLon = 0, downLat = 0;
+  let lastPinchDist = 0;
 
   function onDown(e) {
     isInteracting = true; autoRotate = false;
@@ -306,12 +447,13 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
   }
   animate();
 
-  // Called from Flutter to rotate camera to a hotspot
-  window.navigateTo = function(yaw, pitch) {
-    autoRotate = false;
-    lon = yaw;
-    lat = -pitch; // pitch is inverted in this coordinate system
-  };
+  // Show the requested scene first, then quietly preload the rest in the
+  // background so switching later is instant.
+  switchScene($initialIndex).then(() => {
+    for (let i = 0; i < scenesData.length; i++) {
+      if (i !== $initialIndex) loadTexture(i);
+    }
+  });
 </script>
 </body>
 </html>
@@ -342,6 +484,14 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
       _selectedIndex = 0;
       _viewerMode = false;
       _scenes = [];
+      _fullHtmlRequested = false;
+      _fullHtmlReady = false;
+      _isFullHtmlLoad = false;
+      _pendingSwitchIndex = -1;
+      // Retry/reload means the user explicitly wants fresh data — clear the
+      // cache so this next fetch/build actually happens again.
+      _cachedScenes = null;
+      _cachedFullHtml = null;
       _sceneFuture = PanoramaService().listPanoramaScenes();
       _webViewController
           .loadHtmlString(_buildEmptyHtml('Loading 360 pictures...'));
@@ -420,6 +570,8 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
 
                     if (_scenes.isEmpty) {
                       _scenes = scenes;
+                      _cachedScenes = scenes;
+                      unawaited(_loadFullPanoramaHtml());
                     }
 
                     if (!_viewerMode) {
@@ -449,7 +601,7 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
           crossAxisCount: 2,
           crossAxisSpacing: 14,
           mainAxisSpacing: 14,
-          childAspectRatio: 1.05,
+          childAspectRatio: 0.92,
         ),
         itemCount: _scenes.length,
         itemBuilder: (context, index) {
@@ -992,17 +1144,23 @@ class _PanoramaCategoryCard extends StatelessWidget {
       onTap: onView,
       child: Container(
         decoration: BoxDecoration(
-          color: const Color(0xFF0E7C8C),
-          borderRadius: BorderRadius.circular(14),
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF11919C), Color(0xFF0A5C68)],
+          ),
+          borderRadius: BorderRadius.circular(18),
           border: Border.all(
             color: highlighted ? kAccent : const Color(0xFFAEEAF2),
-            width: highlighted ? 2.5 : 1.6,
+            width: highlighted ? 2.6 : 1.6,
           ),
-          boxShadow: const [
+          boxShadow: [
             BoxShadow(
-              color: Color(0x22000000),
-              blurRadius: 8,
-              offset: Offset(0, 3),
+              color: (highlighted ? kAccent : Colors.black)
+                  .withValues(alpha: highlighted ? 0.4 : 0.18),
+              blurRadius: highlighted ? 18 : 10,
+              spreadRadius: highlighted ? 1 : 0,
+              offset: const Offset(0, 4),
             ),
           ],
         ),
@@ -1010,80 +1168,180 @@ class _PanoramaCategoryCard extends StatelessWidget {
         child: Column(
           children: [
             Expanded(
-              child: SizedBox(
-                width: double.infinity,
-                child: Image.network(
-                  imageUrl,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
-                    color: const Color(0xFFE0F7FA),
-                    alignment: Alignment.center,
-                    child: const Icon(
-                      Icons.threesixty_rounded,
-                      color: Color(0xFF0E7C8C),
-                      size: 40,
-                    ),
-                  ),
-                  loadingBuilder: (context, child, progress) {
-                    if (progress == null) return child;
-                    return Container(
-                      color: const Color(0xFFE0F7FA),
-                      alignment: Alignment.center,
-                      child: const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.4,
-                          color: Color(0xFF0E7C8C),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  // Dark backing so any letterbox space around a
+                  // non-16:9 photo reads as an intentional frame, not
+                  // empty space — the picture itself is never cropped.
+                  Container(color: const Color(0xFF08414A)),
+                  Center(
+                    child: AspectRatio(
+                      aspectRatio: 16 / 9,
+                      child: CachedNetworkImage(
+                        imageUrl: imageUrl,
+                        fit: BoxFit.contain,
+                        errorWidget: (_, __, ___) => Container(
+                          color: const Color(0xFF08414A),
+                          alignment: Alignment.center,
+                          child: Icon(
+                            Icons.threesixty_rounded,
+                            color: kAccent.withValues(alpha: 0.8),
+                            size: 36,
+                          ),
+                        ),
+                        placeholder: (_, __) => Container(
+                          color: const Color(0xFF08414A),
+                          alignment: Alignment.center,
+                          child: SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.4,
+                              color: kAccent,
+                            ),
+                          ),
                         ),
                       ),
-                    );
-                  },
-                ),
+                    ),
+                  ),
+                  // Category icon badge
+                  Positioned(
+                    top: 8,
+                    left: 8,
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [kAccent, Color(0xFF1387C9)],
+                        ),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.85),
+                          width: 1.2,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: kAccent.withValues(alpha: 0.6),
+                            blurRadius: 8,
+                          ),
+                        ],
+                      ),
+                      child: Icon(icon, color: Colors.white, size: 14),
+                    ),
+                  ),
+                  if (highlighted)
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [kAccent, Color(0xFF1387C9)],
+                          ),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.8),
+                            width: 1,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: kAccent.withValues(alpha: 0.6),
+                              blurRadius: 8,
+                            ),
+                          ],
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.star_rounded,
+                                size: 11, color: Colors.white),
+                            SizedBox(width: 2),
+                            Text(
+                              'POPULAR',
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.white,
+                                letterSpacing: 0.6,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0xFF0E7C8C), Color(0xFF0A5C68)],
+                ),
+              ),
               child: Column(
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(icon, color: Colors.white, size: 18),
-                      const SizedBox(width: 6),
-                      Flexible(
-                        child: Text(
-                          title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 17,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ),
-                    ],
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.2,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Material(
-                    color: const Color(0xFF34C759),
+                    color: Colors.transparent,
                     borderRadius: BorderRadius.circular(999),
                     child: InkWell(
                       onTap: onView,
                       borderRadius: BorderRadius.circular(999),
-                      child: Container(
-                        width: 86,
-                        height: 28,
-                        alignment: Alignment.center,
-                        child: const Text(
-                          'View',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
+                      child: Ink(
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF3EDB7A), Color(0xFF23A147)],
+                          ),
+                          borderRadius: BorderRadius.circular(999),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF34C759)
+                                  .withValues(alpha: 0.55),
+                              blurRadius: 10,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
+                        ),
+                        child: Container(
+                          width: 96,
+                          height: 30,
+                          alignment: Alignment.center,
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.play_arrow_rounded,
+                                  color: Colors.white, size: 15),
+                              SizedBox(width: 3),
+                              Text(
+                                'View',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),

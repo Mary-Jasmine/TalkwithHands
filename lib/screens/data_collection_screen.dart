@@ -3,12 +3,14 @@ import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:hand_landmarker/hand_landmarker.dart' as mp_hand;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../classifiers/sign_classifier.dart';
 import '../painters/landmark_painter.dart';
+import '../ui/background_music_region.dart';
 
 // ─── Palette ──────────────────────────────────────────────────────────────────
 const Color kBg = Color(0xFF0A0E1A);
@@ -59,6 +61,7 @@ class DataCollectionScreen extends StatefulWidget {
 
 class _DataCollectionScreenState extends State<DataCollectionScreen>
     with WidgetsBindingObserver {
+  static const _exportsChannel = MethodChannel('talkwithhands/training_exports');
 
   // Camera
   CameraController? _cameraController;
@@ -374,6 +377,41 @@ class _DataCollectionScreenState extends State<DataCollectionScreen>
     setState(() { _seqRecording = false; _seqBuffer.clear(); });
   }
 
+  String? get _currentCsvPath =>
+      _collectMode == _CollectMode.sequence ? _seqCsvPath : _staticCsvPath;
+
+  String get _currentCsvName =>
+      _collectMode == _CollectMode.sequence ? 'sign_sequences.csv' : 'sign_landmarks.csv';
+
+  Future<void> _exportCurrentCsv() async {
+    final path = _currentCsvPath;
+    if (path == null) {
+      _showSnack('CSV file is not ready yet.');
+      return;
+    }
+
+    final file = File(path);
+    if (!await file.exists()) {
+      _showSnack('CSV file was not found yet.');
+      return;
+    }
+
+    try {
+      final exportedPath = await _exportsChannel.invokeMethod<String>(
+        'exportCsvToDownloads',
+        {
+          'sourcePath': path,
+          'fileName': _currentCsvName,
+        },
+      );
+      _showSnack('Exported to ${exportedPath ?? 'Downloads'}');
+    } on PlatformException catch (e) {
+      _showSnack(e.message ?? 'Export failed.');
+    } catch (e) {
+      _showSnack('Export failed: $e');
+    }
+  }
+
   void _showSnack(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).clearSnackBars();
@@ -395,7 +433,11 @@ class _DataCollectionScreenState extends State<DataCollectionScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: kBg,
-      body: _loading ? _buildLoading() : _buildMain(),
+      body: BackgroundMusicRegion(
+        track: null,
+        showToggle: false,
+        child: _loading ? _buildLoading() : _buildMain(),
+      ),
     );
   }
 
@@ -581,6 +623,15 @@ class _DataCollectionScreenState extends State<DataCollectionScreen>
           onTap: () => setState(() => _staticRecording = !_staticRecording),
         )),
       ]),
+      const SizedBox(height: 8),
+      _BigBtn(
+        label: 'Export CSV',
+        icon: Icons.download_outlined,
+        accent: false,
+        color: kTeal,
+        enabled: _staticCsvPath != null,
+        onTap: _exportCurrentCsv,
+      ),
       if (_staticCsvPath != null) ...[
         const SizedBox(height: 4),
         Text('→ $_staticCsvPath',
@@ -627,6 +678,15 @@ class _DataCollectionScreenState extends State<DataCollectionScreen>
           onTap: _seqRecording ? _cancelSequence : _startSequence,
         )),
       ]),
+      const SizedBox(height: 8),
+      _BigBtn(
+        label: 'Export CSV',
+        icon: Icons.download_outlined,
+        accent: false,
+        color: kOrange,
+        enabled: _seqCsvPath != null,
+        onTap: _exportCurrentCsv,
+      ),
       if (_seqCsvPath != null) ...[
         const SizedBox(height: 4),
         Text('→ $_seqCsvPath',

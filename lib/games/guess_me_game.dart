@@ -15,6 +15,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 
+import '../services/background_music_service.dart';
+import '../ui/background_music_region.dart';
 import '../ui/app_shell.dart';
 
 // ─────────────────────────────────────────────────────────────
@@ -59,7 +61,73 @@ class Question {
 // ─────────────────────────────────────────────────────────────
 //  QUESTION DATA
 // ─────────────────────────────────────────────────────────────
-List<Question> buildQuestionList() => [
+const _availableQuestionVideoAssets = {
+  'assets/guess_me/videos/churchh.mp4',
+  'assets/guess_me/videos/FRUITT.mp4',
+  'assets/guess_me/videos/GARDENN.mp4',
+  'assets/guess_me/videos/i_love_you_1.mp4',
+  'assets/guess_me/videos/ICE CREAMM.mp4',
+  'assets/guess_me/videos/markett.mp4',
+  'assets/guess_me/videos/ty.mp4',
+  'assets/guess_me/videos/Alphabet/A.mp4',
+  'assets/guess_me/videos/Alphabet/C.mp4',
+  'assets/guess_me/videos/Alphabet/E.mp4',
+  'assets/guess_me/videos/Alphabet/G.mp4',
+  'assets/guess_me/videos/Alphabet/H.mp4',
+  'assets/guess_me/videos/Alphabet/I.mp4',
+  'assets/guess_me/videos/Alphabet/J.mp4',
+  'assets/guess_me/videos/Alphabet/L.mp4',
+  'assets/guess_me/videos/Alphabet/N.mp4',
+  'assets/guess_me/videos/Alphabet/P.mp4',
+  'assets/guess_me/videos/Alphabet/V.mp4',
+  'assets/guess_me/videos/Alphabet/W.mp4',
+  'assets/guess_me/videos/Alphabet/Z.mp4',
+  'assets/guess_me/videos/Animal/bird.mp4',
+  'assets/guess_me/videos/Animal/dog.mp4',
+  'assets/guess_me/videos/Animal/fish.mp4',
+  'assets/guess_me/videos/Animal/horse.mp4',
+  'assets/guess_me/videos/Animal/monkey.mp4',
+  'assets/guess_me/videos/Animal/pig.mp4',
+  'assets/guess_me/videos/Color/black.mp4',
+  'assets/guess_me/videos/Color/blue.mp4',
+  'assets/guess_me/videos/Color/brown.mp4',
+  'assets/guess_me/videos/Color/green.mp4',
+  'assets/guess_me/videos/Color/orange.mp4',
+  'assets/guess_me/videos/Color/yellow.mp4',
+  'assets/guess_me/videos/Direction and Location/back.mp4',
+  'assets/guess_me/videos/Direction and Location/down.mp4',
+  'assets/guess_me/videos/Direction and Location/Front.mp4',
+  'assets/guess_me/videos/Direction and Location/Left.mp4',
+  'assets/guess_me/videos/Direction and Location/Near.mp4',
+  'assets/guess_me/videos/Direction and Location/Right.mp4',
+  'assets/guess_me/videos/Direction and Location/Up.mp4',
+  'assets/guess_me/videos/Emotion/Angry.mp4',
+  'assets/guess_me/videos/Emotion/Confuse.mp4',
+  'assets/guess_me/videos/Emotion/Crazy.mp4',
+  'assets/guess_me/videos/Emotion/Happy.mp4',
+  'assets/guess_me/videos/Emotion/Hate.mp4',
+  'assets/guess_me/videos/Emotion/Scared.mp4',
+  'assets/guess_me/videos/Environment/Beach.mp4',
+  'assets/guess_me/videos/Environment/Garden.mp4',
+  'assets/guess_me/videos/Environment/House.mp4',
+  'assets/guess_me/videos/Environment/Market.mp4',
+  'assets/guess_me/videos/Environment/Road.mp4',
+  'assets/guess_me/videos/Family/auntie.mp4',
+  'assets/guess_me/videos/Family/baby.mp4',
+  'assets/guess_me/videos/Family/brother.mp4',
+  'assets/guess_me/videos/Family/cousin.mp4',
+  'assets/guess_me/videos/Family/daughter.mp4',
+  'assets/guess_me/videos/Family/grandmother.mp4',
+  'assets/guess_me/videos/Family/Husband.mp4',
+  'assets/guess_me/videos/Family/nephew.mp4',
+  'assets/guess_me/videos/Family/ninang.mp4',
+  'assets/guess_me/videos/Family/sister.mp4',
+  'assets/guess_me/videos/Family/son.mp4',
+  'assets/guess_me/videos/Family/wife.mp4',
+};
+
+List<Question> buildQuestionList() {
+  final questions = [
       Question(
         prompt: 'assets/guess_me/videos/how_are_you.mp4',
         options: ['How Are You', 'Thank You', 'Good Night'],
@@ -425,7 +493,303 @@ List<Question> buildQuestionList() => [
         options: ['I Love You', 'I Hate You', 'I Miss You'],
         correctAnswer: 'I Love You',
       ),
+
+      // ── Family ─────────────────────────────────────────────────
+      Question(
+        prompt: 'assets/guess_me/videos/Family/auntie.mp4',
+        options: ['Auntie', 'Uncle', 'Cousin'],
+        correctAnswer: 'Auntie',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Family/baby.mp4',
+        options: ['Baby', 'Son', 'Daughter'],
+        correctAnswer: 'Baby',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Family/brother.mp4',
+        options: ['Brother', 'Sister', 'Cousin'],
+        correctAnswer: 'Brother',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Family/cousin.mp4',
+        options: ['Cousin', 'Brother', 'Nephew'],
+        correctAnswer: 'Cousin',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Family/daughter.mp4',
+        options: ['Daughter', 'Son', 'Sister'],
+        correctAnswer: 'Daughter',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Family/grandmother.mp4',
+        options: ['Grandmother', 'Grandfather', 'Auntie'],
+        correctAnswer: 'Grandmother',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Family/Husband.mp4',
+        options: ['Husband', 'Wife', 'Father'],
+        correctAnswer: 'Husband',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Family/nephew.mp4',
+        options: ['Nephew', 'Niece', 'Cousin'],
+        correctAnswer: 'Nephew',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Family/ninang.mp4',
+        options: ['Ninang', 'Ninong', 'Auntie'],
+        correctAnswer: 'Ninang',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Family/sister.mp4',
+        options: ['Sister', 'Brother', 'Cousin'],
+        correctAnswer: 'Sister',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Family/son.mp4',
+        options: ['Son', 'Daughter', 'Baby'],
+        correctAnswer: 'Son',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Family/wife.mp4',
+        options: ['Wife', 'Husband', 'Mother'],
+        correctAnswer: 'Wife',
+      ),
+
+      // ── Environment ────────────────────────────────────────────
+      Question(
+        prompt: 'assets/guess_me/videos/Environment/Beach.mp4',
+        options: ['Beach', 'Garden', 'Road'],
+        correctAnswer: 'Beach',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Environment/Garden.mp4',
+        options: ['Garden', 'House', 'Market'],
+        correctAnswer: 'Garden',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Environment/House.mp4',
+        options: ['House', 'Garden', 'Road'],
+        correctAnswer: 'House',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Environment/Market.mp4',
+        options: ['Market', 'Beach', 'House'],
+        correctAnswer: 'Market',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Environment/Road.mp4',
+        options: ['Road', 'Market', 'Garden'],
+        correctAnswer: 'Road',
+      ),
+
+      // ── Emotion ────────────────────────────────────────────────
+      Question(
+        prompt: 'assets/guess_me/videos/Emotion/Angry.mp4',
+        options: ['Angry', 'Happy', 'Scared'],
+        correctAnswer: 'Angry',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Emotion/Confuse.mp4',
+        options: ['Confused', 'Angry', 'Crazy'],
+        correctAnswer: 'Confused',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Emotion/Crazy.mp4',
+        options: ['Crazy', 'Confused', 'Hate'],
+        correctAnswer: 'Crazy',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Emotion/Happy.mp4',
+        options: ['Happy', 'Angry', 'Scared'],
+        correctAnswer: 'Happy',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Emotion/Hate.mp4',
+        options: ['Hate', 'Happy', 'Crazy'],
+        correctAnswer: 'Hate',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Emotion/Scared.mp4',
+        options: ['Scared', 'Angry', 'Happy'],
+        correctAnswer: 'Scared',
+      ),
+
+      // ── Direction and Location ─────────────────────────────────
+      Question(
+        prompt: 'assets/guess_me/videos/Direction and Location/back.mp4',
+        options: ['Back', 'Front', 'Up'],
+        correctAnswer: 'Back',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Direction and Location/down.mp4',
+        options: ['Down', 'Up', 'Near'],
+        correctAnswer: 'Down',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Direction and Location/Front.mp4',
+        options: ['Front', 'Back', 'Right'],
+        correctAnswer: 'Front',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Direction and Location/Left.mp4',
+        options: ['Left', 'Right', 'Near'],
+        correctAnswer: 'Left',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Direction and Location/Near.mp4',
+        options: ['Near', 'Far', 'Down'],
+        correctAnswer: 'Near',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Direction and Location/Right.mp4',
+        options: ['Right', 'Left', 'Up'],
+        correctAnswer: 'Right',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Direction and Location/Up.mp4',
+        options: ['Up', 'Down', 'Front'],
+        correctAnswer: 'Up',
+      ),
+
+      // ── Color ──────────────────────────────────────────────────
+      Question(
+        prompt: 'assets/guess_me/videos/Color/black.mp4',
+        options: ['Black', 'Brown', 'Blue'],
+        correctAnswer: 'Black',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Color/blue.mp4',
+        options: ['Blue', 'Green', 'Black'],
+        correctAnswer: 'Blue',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Color/brown.mp4',
+        options: ['Brown', 'Black', 'Orange'],
+        correctAnswer: 'Brown',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Color/green.mp4',
+        options: ['Green', 'Blue', 'Yellow'],
+        correctAnswer: 'Green',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Color/orange.mp4',
+        options: ['Orange', 'Yellow', 'Brown'],
+        correctAnswer: 'Orange',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Color/yellow.mp4',
+        options: ['Yellow', 'Orange', 'Green'],
+        correctAnswer: 'Yellow',
+      ),
+
+      // ── Alphabet ───────────────────────────────────────────────
+      Question(
+        prompt: 'assets/guess_me/videos/Alphabet/A.mp4',
+        options: ['A', 'C', 'E'],
+        correctAnswer: 'A',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Alphabet/C.mp4',
+        options: ['C', 'A', 'G'],
+        correctAnswer: 'C',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Alphabet/E.mp4',
+        options: ['E', 'A', 'I'],
+        correctAnswer: 'E',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Alphabet/G.mp4',
+        options: ['G', 'C', 'J'],
+        correctAnswer: 'G',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Alphabet/H.mp4',
+        options: ['H', 'N', 'I'],
+        correctAnswer: 'H',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Alphabet/I.mp4',
+        options: ['I', 'E', 'J'],
+        correctAnswer: 'I',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Alphabet/J.mp4',
+        options: ['J', 'G', 'L'],
+        correctAnswer: 'J',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Alphabet/L.mp4',
+        options: ['L', 'J', 'N'],
+        correctAnswer: 'L',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Alphabet/N.mp4',
+        options: ['N', 'H', 'P'],
+        correctAnswer: 'N',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Alphabet/P.mp4',
+        options: ['P', 'N', 'V'],
+        correctAnswer: 'P',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Alphabet/V.mp4',
+        options: ['V', 'W', 'P'],
+        correctAnswer: 'V',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Alphabet/W.mp4',
+        options: ['W', 'V', 'Z'],
+        correctAnswer: 'W',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Alphabet/Z.mp4',
+        options: ['Z', 'W', 'V'],
+        correctAnswer: 'Z',
+      ),
+
+      // ── Animal ─────────────────────────────────────────────────
+      Question(
+        prompt: 'assets/guess_me/videos/Animal/bird.mp4',
+        options: ['Bird', 'Fish', 'Dog'],
+        correctAnswer: 'Bird',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Animal/dog.mp4',
+        options: ['Dog', 'Pig', 'Horse'],
+        correctAnswer: 'Dog',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Animal/fish.mp4',
+        options: ['Fish', 'Bird', 'Monkey'],
+        correctAnswer: 'Fish',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Animal/horse.mp4',
+        options: ['Horse', 'Dog', 'Pig'],
+        correctAnswer: 'Horse',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Animal/monkey.mp4',
+        options: ['Monkey', 'Fish', 'Bird'],
+        correctAnswer: 'Monkey',
+      ),
+      Question(
+        prompt: 'assets/guess_me/videos/Animal/pig.mp4',
+        options: ['Pig', 'Horse', 'Dog'],
+        correctAnswer: 'Pig',
+      ),
     ];
+
+  final playableQuestions = questions
+      .where((question) => _availableQuestionVideoAssets.contains(question.prompt))
+      .toList();
+
+  return playableQuestions.isEmpty ? questions : playableQuestions;
+}
 
 // ─────────────────────────────────────────────────────────────
 //  THEME CONSTANTS
@@ -659,7 +1023,9 @@ class _GuessMeScreenState extends State<GuessMeScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(
+      body: BackgroundMusicRegion(
+        track: BackgroundMusicTrack.guessMe,
+        child: SafeArea(
         child: Stack(
           children: [
             const _StripedBackground(),
@@ -682,6 +1048,7 @@ class _GuessMeScreenState extends State<GuessMeScreen>
                 child: _buildRoundTransitionBanner(),
               ),
           ],
+        ),
         ),
       ),
     );
@@ -961,8 +1328,7 @@ class _QuestionVideoPlayerState extends State<_QuestionVideoPlayer> {
   String? get _webVideoUrl {
     final assetPath = _assetPath;
     if (assetPath == null || !kIsWeb) return null;
-    final fileName = assetPath.split('/').last;
-    return '/assets/guess_me/videos/$fileName';
+    return '/assets/${Uri.encodeFull(assetPath)}';
   }
   bool get _hasVideoAsset => _assetPath != null;
 
@@ -1383,7 +1749,7 @@ class _WinScreenState extends State<WinScreen> with TickerProviderStateMixin {
                       ),
                       const SizedBox(height: 14),
                       TextButton(
-                        onPressed: () => Navigator.of(context).popUntil((r) => r.isFirst),
+                        onPressed: () => Navigator.of(context).pop(),
                         child: const Text('Exit', style: TextStyle(color: Colors.white60, fontSize: 14)),
                       ),
                     ],
@@ -1523,7 +1889,7 @@ class _DefeatScreenState extends State<DefeatScreen> with TickerProviderStateMix
                       ),
                       const SizedBox(height: 14),
                       TextButton(
-                        onPressed: () => Navigator.of(context).popUntil((r) => r.isFirst),
+                        onPressed: () => Navigator.of(context).pop(),
                         child: const Text('Exit', style: TextStyle(color: Colors.white38, fontSize: 14)),
                       ),
                     ],

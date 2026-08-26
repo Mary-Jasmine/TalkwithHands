@@ -3,6 +3,8 @@ import 'dart:math';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 
+import '../services/background_music_service.dart';
+import '../ui/background_music_region.dart';
 import '../ui/app_shell.dart';
 
 void main() {
@@ -1125,7 +1127,9 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     final maxW = isWide ? 480.0 : size.width;
 
     return Scaffold(
-      body: PopScope(
+      body: BackgroundMusicRegion(
+        track: BackgroundMusicTrack.guessAsl,
+        child: PopScope(
         canPop: !_showStartPrompt,
         child: ArcadeBackground(
           child: SafeArea(
@@ -1160,6 +1164,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
               ],
             ),
           ),
+        ),
         ),
       ),
     );

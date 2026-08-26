@@ -76,6 +76,7 @@ class ProgressService {
     String? itemKey,
     int secondsSpent = 0,
     bool gameCompleted = false,
+    bool countEvent = true,
   }) async {
     final res = await _dio.post(
       '/progress/activity',
@@ -84,6 +85,7 @@ class ProgressService {
         if (itemKey != null) 'item_key': itemKey,
         'seconds_spent': secondsSpent,
         'game_completed': gameCompleted,
+        'count_event': countEvent,
       },
     );
     return UserProgress.fromJson(Map<String, dynamic>.from(res.data as Map));

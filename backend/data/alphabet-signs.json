@@ -9,7 +9,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=134yldcrzEUZtrEuMKqBWoMazWbo1xrlR&export=download&confirm=t",
     "description": "ASL hand sign for letter A.",
     "sort_order": 1,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "B",
@@ -21,7 +24,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=1HZM5n67S8lu4ErqsrVuIpj3KtKB_0WU_&export=download&confirm=t",
     "description": "ASL hand sign for letter B.",
     "sort_order": 2,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "C",
@@ -33,7 +39,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=1eTH_8Y8LV6tr3PnCgn5xb09aWt6HRhEP&export=download&confirm=t",
     "description": "ASL hand sign for letter C.",
     "sort_order": 3,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "D",
@@ -45,7 +54,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=1nMVaqwo5Q4tmnQOMtWBWaVgKNpomBvqN&export=download&confirm=t",
     "description": "ASL hand sign for letter D.",
     "sort_order": 4,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "E",
@@ -57,7 +69,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=1PM7q6Fh-y07Ho0WjBQTPuEthf5rLKsgm&export=download&confirm=t",
     "description": "ASL hand sign for letter E.",
     "sort_order": 5,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "F",
@@ -69,7 +84,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=1_2nGtqSTaIJrb8BHM2nkYVQ83ZnRiGQZ&export=download&confirm=t",
     "description": "ASL hand sign for letter F.",
     "sort_order": 6,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "G",
@@ -81,7 +99,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=1cCggyHhfkYvUNmbHuN_eSWn2tupwR5jI&export=download&confirm=t",
     "description": "ASL hand sign for letter G.",
     "sort_order": 7,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "H",
@@ -93,7 +114,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=1f5GPgXHvydfbSRpZxyaNX5CsaMoNhcMg&export=download&confirm=t",
     "description": "ASL hand sign for letter H.",
     "sort_order": 8,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "I",
@@ -105,7 +129,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=1oJdhs-tkH36rpWA05Nq7_Tygl-yuL43J&export=download&confirm=t",
     "description": "ASL hand sign for letter I.",
     "sort_order": 9,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "J",
@@ -117,7 +144,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=1RWfQCE-ekQcbqAnDqfQo8KVaB-CfNH9a&export=download&confirm=t",
     "description": "ASL hand sign for letter J.",
     "sort_order": 10,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "K",
@@ -129,7 +159,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=1eEh61UtTSvpt2OVv3T_2R1Akrgix-KG4&export=download&confirm=t",
     "description": "ASL hand sign for letter K.",
     "sort_order": 11,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "L",
@@ -141,7 +174,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=17FncKJ_DLzFtUpj8Zt-ukPicSI3h-DsE&export=download&confirm=t",
     "description": "ASL hand sign for letter L.",
     "sort_order": 12,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "M",
@@ -153,7 +189,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=1lT6vI1ntbJM5sshRKcD4yTt-7MeEdVFd&export=download&confirm=t",
     "description": "ASL hand sign for letter M.",
     "sort_order": 13,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "N",
@@ -165,7 +204,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=1tvHV-XlD34PLTSFVl_Ph4v97fSNcQUh0&export=download&confirm=t",
     "description": "ASL hand sign for letter N.",
     "sort_order": 14,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "O",
@@ -177,7 +219,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=1ynpQreXcug_f1-UIbnGmL3dG2APKKeLK&export=download&confirm=t",
     "description": "ASL hand sign for letter O.",
     "sort_order": 15,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "P",
@@ -189,7 +234,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=1U00qP0opHkc09LZ6wOX6WrfLm5icbUrr&export=download&confirm=t",
     "description": "ASL hand sign for letter P.",
     "sort_order": 16,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "Q",
@@ -201,7 +249,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=1F36FGVSAZZX482jDVh0yVHxXLfFwHIWV&export=download&confirm=t",
     "description": "ASL hand sign for letter Q.",
     "sort_order": 17,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "R",
@@ -213,7 +264,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=1NWM_ZNddGxcYF5lJ0FoTp3CTz1uisQku&export=download&confirm=t",
     "description": "ASL hand sign for letter R.",
     "sort_order": 18,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "S",
@@ -225,7 +279,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=1PGbZLk5hkLk072gI-kRwWNKrFdcWaxEb&export=download&confirm=t",
     "description": "ASL hand sign for letter S.",
     "sort_order": 19,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "T",
@@ -237,7 +294,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=1PsRmlkb-U42fFAIEf37mXCwIYdskEDzz&export=download&confirm=t",
     "description": "ASL hand sign for letter T.",
     "sort_order": 20,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "U",
@@ -249,7 +309,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=1lqO2p-PWHokjfD2PV-2Rmq6Z6ZOPmu9_&export=download&confirm=t",
     "description": "ASL hand sign for letter U.",
     "sort_order": 21,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "V",
@@ -261,7 +324,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=1Y4QNh5DEiOxQe2HmcwsM4NJQVwcmtygv&export=download&confirm=t",
     "description": "ASL hand sign for letter V.",
     "sort_order": 22,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "W",
@@ -273,7 +339,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=13b2wmcm55hHME7qQNHuz2wcui0Jd25Ok&export=download&confirm=t",
     "description": "ASL hand sign for letter W.",
     "sort_order": 23,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "X",
@@ -285,7 +354,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=1tgvJ626g0Pq1Ixjz8d-swatRYt6aSZmm&export=download&confirm=t",
     "description": "ASL hand sign for letter X.",
     "sort_order": 24,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "Y",
@@ -297,7 +369,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=1TsXjWpPdeT1-czTdmc5DgSrOAJFPuno2&export=download&confirm=t",
     "description": "ASL hand sign for letter Y.",
     "sort_order": 25,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "Z",
@@ -309,6 +384,9 @@
     "video_url": "https://drive.usercontent.google.com/download?id=1VuiSggYgS6LM9pKY9kBa1NRI_kfn-LR-&export=download&confirm=t",
     "description": "ASL hand sign for letter Z.",
     "sort_order": 26,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   }
 ]

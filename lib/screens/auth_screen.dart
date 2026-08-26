@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../ui/app_shell.dart';
 import '../services/auth_service.dart';
+import '../services/background_music_service.dart';
+import '../ui/background_music_region.dart';
 import 'reset_password_screen.dart';
 import 'welcome_screen.dart';
 
@@ -62,15 +64,6 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   bool _isStrongPassword(String password) => _passwordScore(password) == 4;
-
-  (double, String, Color) _passwordStrength(String password) {
-    final score = _passwordScore(password);
-    final percent = score / 4.0;
-    if (score <= 1) return (percent, 'Weak', const Color(0xFFE74C3C));
-    if (score == 2) return (percent, 'Fair', const Color(0xFFF39C12));
-    if (score == 3) return (percent, 'Good', const Color(0xFFF1C40F));
-    return (percent, 'Strong', const Color(0xFF2ECC71));
-  }
 
   Future<void> _submit() async {
     if (_loading) return;
@@ -225,10 +218,10 @@ class _AuthScreenState extends State<AuthScreen> {
   @override
   Widget build(BuildContext context) {
     final isLogin = _tab == AuthTab.login;
-    final (strengthPct, strengthLabel, strengthColor) =
-        _passwordStrength(_registerPassword.text);
     return Scaffold(
-      body: AppBackground(
+      body: BackgroundMusicRegion(
+        track: BackgroundMusicTrack.page,
+        child: AppBackground(
         imageAsset: 'assets/images/home_bg_clean.png',
         child: Column(
           children: [
@@ -245,6 +238,7 @@ class _AuthScreenState extends State<AuthScreen> {
                     padding: const EdgeInsets.fromLTRB(18, 28, 20, 10),
                     decoration: BoxDecoration(
                       color: Colors.white,
+                      borderRadius: BorderRadius.circular(25),
                       border: Border.all(color: Colors.black, width: 2),
                     ),
                     child: Column(
@@ -292,30 +286,6 @@ class _AuthScreenState extends State<AuthScreen> {
                           onChanged: (tab) => setState(() => _tab = tab),
                         ),
                         const SizedBox(height: 18),
-                        if (isLogin) ...[
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _SocialButton(
-                                  icon: Icons.public,
-                                  label: 'Login with Google',
-                                  onTap: _loading ? null : _loginGoogle,
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: _SocialButton(
-                                  icon: Icons.facebook,
-                                  label: 'Login with Facebook',
-                                  onTap: _loading ? null : _loginFacebook,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                          const _DividerOr(),
-                        ],
-                        const SizedBox(height: 12),
                         if (!isLogin) ...[
                           const _FieldLabel('User Name'),
                           _AppTextField(
@@ -361,35 +331,8 @@ class _AuthScreenState extends State<AuthScreen> {
                         ),
                         if (!isLogin) ...[
                           const SizedBox(height: 10),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(999),
-                                  child: LinearProgressIndicator(
-                                    value: strengthPct,
-                                    minHeight: 8,
-                                    backgroundColor: const Color(0xFFE9EEF6),
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                        strengthColor),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Text(
-                                strengthLabel,
-                                style: TextStyle(
-                                  color: strengthColor,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 6),
-                          const Text(
-                            'Use atleast 8 characters with uppercase, lowercase, and a number.',
-                            style: TextStyle(
-                                color: Color(0xFF6D7583), fontSize: 12),
+                          _PasswordRequirements(
+                            password: _registerPassword.text,
                           ),
                         ],
                         if (!isLogin) ...[
@@ -454,6 +397,22 @@ class _AuthScreenState extends State<AuthScreen> {
                             ),
                           ),
                         ),
+                        if (isLogin) ...[
+                          const SizedBox(height: 20),
+                          const _DividerOr(),
+                          const SizedBox(height: 16),
+                          _SocialButton(
+                            icon: Icons.public,
+                            label: 'Login with Google',
+                            onTap: _loading ? null : _loginGoogle,
+                          ),
+                          const SizedBox(height: 12),
+                          _SocialButton(
+                            icon: Icons.facebook,
+                            label: 'Login with Facebook',
+                            onTap: _loading ? null : _loginFacebook,
+                          ),
+                        ],
                         const SizedBox(height: 16),
                         RichText(
                           textAlign: TextAlign.center,
@@ -467,7 +426,7 @@ class _AuthScreenState extends State<AuthScreen> {
                                   text:
                                       'By continuing, you agree to Talk with Hands '),
                               TextSpan(
-                                text: 'Terms of Service',
+                                text: '\n Terms of Service',
                                 style: TextStyle(
                                   color: Color(0xFF32B7FF),
                                   fontWeight: FontWeight.w700,
@@ -475,7 +434,7 @@ class _AuthScreenState extends State<AuthScreen> {
                               ),
                               TextSpan(text: ' and '),
                               TextSpan(
-                                text: 'Privacy Policy',
+                                text: 'Privacy Policy \n',
                                 style: TextStyle(
                                   color: Color(0xFF32B7FF),
                                   fontWeight: FontWeight.w700,
@@ -491,6 +450,7 @@ class _AuthScreenState extends State<AuthScreen> {
               ),
             ),
           ],
+        ),
         ),
       ),
     );
@@ -643,6 +603,81 @@ class _DividerOr extends StatelessWidget {
         ),
         const Expanded(child: Divider(color: Color(0xFFD9DEE7))),
       ],
+    );
+  }
+}
+
+class _PasswordRequirements extends StatelessWidget {
+  final String password;
+
+  const _PasswordRequirements({required this.password});
+
+  @override
+  Widget build(BuildContext context) {
+    final hasLength = password.length >= 8;
+    final hasUpper = RegExp(r'[A-Z]').hasMatch(password);
+    final hasLower = RegExp(r'[a-z]').hasMatch(password);
+    final hasNumber = RegExp(r'[0-9]').hasMatch(password);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7F9FC),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFE1E6EF)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Your password must contain:',
+            style: TextStyle(
+              color: Color(0xFF2D3340),
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          _RequirementRow(label: 'At least 8 characters', met: hasLength),
+          _RequirementRow(label: 'Upper case letters (A-Z)', met: hasUpper),
+          _RequirementRow(label: 'Lower case letters (a-z)', met: hasLower),
+          _RequirementRow(label: 'Numbers (0-9)', met: hasNumber),
+        ],
+      ),
+    );
+  }
+}
+
+class _RequirementRow extends StatelessWidget {
+  final String label;
+  final bool met;
+
+  const _RequirementRow({required this.label, required this.met});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = met ? const Color(0xFF2ECC71) : const Color(0xFF9AA2B3);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        children: [
+          Icon(
+            met ? Icons.check_circle_rounded : Icons.circle_outlined,
+            color: color,
+            size: 16,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(
+              color: met ? const Color(0xFF2D3340) : const Color(0xFF9AA2B3),
+              fontSize: 13,
+              fontWeight: met ? FontWeight.w600 : FontWeight.w400,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

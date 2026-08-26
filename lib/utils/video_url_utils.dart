@@ -1,4 +1,5 @@
 import '../services/api_config.dart';
+import 'url_helper.dart';
 
 String normalizePlayableVideoUrl(String value) {
   final url = value.trim();
@@ -11,7 +12,7 @@ String normalizePlayableVideoUrl(String value) {
   final host = uri.host.toLowerCase();
   if (!host.endsWith('drive.google.com') &&
       !host.endsWith('drive.usercontent.google.com')) {
-    return url;
+    return getOptimizedUrl(url, width: 480);
   }
 
   final fileId = _googleDriveFileId(uri);
@@ -41,6 +42,16 @@ String? backendProxyVideoUrl(String value) {
   return absoluteBackendUrl('/media/videos/$fileId');
 }
 
+bool isGoogleDriveVideoUrl(String value) {
+  final uri = Uri.tryParse(value.trim());
+  if (uri == null || !uri.hasScheme) return false;
+  final host = uri.host.toLowerCase();
+  return host.endsWith('drive.google.com') ||
+      host.endsWith('drive.usercontent.google.com') ||
+      host.endsWith('docs.google.com');
+
+}
+
 String? resolvePrimaryVideoPlayUrl({
   required String videoUrl,
   required String videoAsset,
@@ -61,8 +72,14 @@ String? resolvePrimaryVideoPlayUrl({
 bool hasPlayableVideoSource({
   required String videoAsset,
   required String videoUrl,
+  String frontVideoUrl = '',
+  String leftVideoUrl = '',
+  String rightVideoUrl = '',
 }) {
   return normalizePlayableVideoUrl(videoUrl).isNotEmpty ||
+      normalizePlayableVideoUrl(frontVideoUrl).isNotEmpty ||
+      normalizePlayableVideoUrl(leftVideoUrl).isNotEmpty ||
+      normalizePlayableVideoUrl(rightVideoUrl).isNotEmpty ||
       backendVideoUrl(videoAsset) != null ||
       isBundledVideoAsset(videoAsset);
 }

@@ -296,10 +296,12 @@ class _AppMenuDrawerState extends State<AppMenuDrawer> {
                   // Header with close button
                   Row(
                     children: [
-                      // Heart icon matching the bg theme
+                      // Hand icon — signs directly to the app's purpose
+                      // (sign language) instead of a generic heart, so the
+                      // menu identity is instantly recognizable.
                       Container(
-                        width: 36,
-                        height: 36,
+                        width: 44,
+                        height: 44,
                         decoration: BoxDecoration(
                           gradient: const LinearGradient(
                             colors: [Color(0xFF39D8E8), Color(0xFF1387C9)],
@@ -308,41 +310,58 @@ class _AppMenuDrawerState extends State<AppMenuDrawer> {
                           ),
                           shape: BoxShape.circle,
                           border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.6),
-                            width: 1.5,
+                            color: Colors.white.withValues(alpha: 0.75),
+                            width: 2,
                           ),
                           boxShadow: [
                             BoxShadow(
                               color: const Color(0xFF39D8E8)
-                                  .withValues(alpha: 0.5),
-                              blurRadius: 10,
+                                  .withValues(alpha: 0.65),
+                              blurRadius: 16,
+                              spreadRadius: 1,
                               offset: const Offset(0, 3),
                             ),
                           ],
                         ),
                         child: const Icon(
-                          Icons.favorite_rounded,
+                          Icons.front_hand_rounded,
                           color: Colors.white,
-                          size: 18,
+                          size: 22,
                         ),
                       ),
-                      const SizedBox(width: 10),
-                      const Text(
-                        'MENU',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 22,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 4,
-                          shadows: [
-                            Shadow(
-                              color: Color(0x8839D8E8),
-                              blurRadius: 10,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text(
+                              'MENU',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 24,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 4,
+                                shadows: [
+                                  Shadow(
+                                    color: Color(0x8839D8E8),
+                                    blurRadius: 12,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Text(
+                              'LEARN • PRACTICE • CONNECT',
+                              style: TextStyle(
+                                color: kAccent.withValues(alpha: 0.95),
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1.6,
+                              ),
                             ),
                           ],
                         ),
                       ),
-                      const Spacer(),
                       // Close button — white circle
                       GestureDetector(
                         onTap: widget.onClose,
@@ -376,25 +395,58 @@ class _AppMenuDrawerState extends State<AppMenuDrawer> {
                   SizedBox(height: compact ? 6 : 10),
                   // User greeting pill
                   Container(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 8),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
-                          Colors.white.withValues(alpha: 0.18),
-                          Colors.white.withValues(alpha: 0.08),
+                          Colors.white.withValues(alpha: 0.22),
+                          Colors.white.withValues(alpha: 0.09),
                         ],
                       ),
                       borderRadius: BorderRadius.circular(999),
                       border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.35),
-                        width: 1,
+                        color: kAccent.withValues(alpha: 0.55),
+                        width: 1.4,
                       ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: kAccent.withValues(alpha: 0.18),
+                          blurRadius: 14,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        Container(
+                          width: 26,
+                          height: 26,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF39D8E8), Color(0xFF1A6FD4)],
+                            ),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.8),
+                              width: 1,
+                            ),
+                          ),
+                          child: Text(
+                            widget.userName.isNotEmpty
+                                ? widget.userName[0].toUpperCase()
+                                : '?',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
                         const Icon(Icons.waving_hand_rounded,
                             color: Colors.white, size: 14),
                         const SizedBox(width: 6),
@@ -404,7 +456,7 @@ class _AppMenuDrawerState extends State<AppMenuDrawer> {
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 13,
-                              fontWeight: FontWeight.w600,
+                              fontWeight: FontWeight.w700,
                             ),
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -414,24 +466,20 @@ class _AppMenuDrawerState extends State<AppMenuDrawer> {
                   ),
                   // Divider
                   Container(
-                    height: 1,
+                    height: 2,
                     margin: const EdgeInsets.only(bottom: 10),
                     decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(2),
                       gradient: LinearGradient(
                         colors: [
                           Colors.transparent,
-                          const Color(0xFF39D8E8).withValues(alpha: 0.6),
+                          kAccent.withValues(alpha: 0.9),
                           Colors.transparent,
                         ],
                       ),
                     ),
                   ),
-                  _MenuTile(
-                    icon: Icons.home_rounded,
-                    title: 'Home',
-                    active: widget.activeScreen == 'Home',
-                    onTap: () => Navigator.of(context).pop(),
-                  ),
+                  _SectionLabel(label: 'MAIN'),
                   _MenuTile(
                     icon: Icons.bar_chart_rounded,
                     title: 'Progress',
@@ -476,6 +524,8 @@ class _AppMenuDrawerState extends State<AppMenuDrawer> {
                         );
                       },
                     ),
+                  SizedBox(height: compact ? 4 : 8),
+                  _SectionLabel(label: 'LEARN & PRACTICE'),
                   _MenuTile(
                     icon: Icons.sort_by_alpha_rounded,
                     title: 'Alphabets',
@@ -560,11 +610,7 @@ class _AppMenuDrawerState extends State<AppMenuDrawer> {
                     },
                   ),
                   SizedBox(height: compact ? 6 : 12),
-                  _MenuTile(
-                    icon: Icons.person_rounded,
-                    title: 'Avatar',
-                    active: widget.activeScreen == 'Avatar',
-                  ),
+                  _SectionLabel(label: 'PROFILE'),
                   _MenuTile(
                     icon: Icons.settings_rounded,
                     title: 'Settings',
@@ -695,20 +741,22 @@ class AppBackIconButton extends StatelessWidget {
         shape: BoxShape.circle,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.10),
-            blurRadius: 5,
-            offset: const Offset(1, 2),
+            color: Colors.black.withValues(alpha: 0.34),
+            blurRadius: 14,
+            offset: const Offset(0, 5),
           ),
           BoxShadow(
-            color: Colors.white.withValues(alpha: 0.10),
-            blurRadius: 2,
-            offset: const Offset(-1, -1),
+            color: kAccent.withValues(alpha: 0.36),
+            blurRadius: 18,
+            spreadRadius: 1,
           ),
         ],
       ),
       child: Material(
-        color: kAccent,
-        shape: const CircleBorder(),
+        color: const Color(0xFF0697B4),
+        shape: const CircleBorder(
+          side: BorderSide(color: Colors.white, width: 2.2),
+        ),
         child: InkWell(
           customBorder: const CircleBorder(),
           onTap: onTap,
@@ -792,6 +840,47 @@ class AppMenuIconButton extends StatelessWidget {
   }
 }
 
+class _SectionLabel extends StatelessWidget {
+  final String label;
+
+  const _SectionLabel({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8, left: 2),
+      child: Row(
+        children: [
+          Container(
+            width: 4,
+            height: 14,
+            decoration: BoxDecoration(
+              color: kAccent,
+              borderRadius: BorderRadius.circular(4),
+              boxShadow: [
+                BoxShadow(
+                  color: kAccent.withValues(alpha: 0.7),
+                  blurRadius: 8,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.9),
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 2,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _MenuTile extends StatelessWidget {
   final IconData icon;
   final String title;
@@ -810,7 +899,7 @@ class _MenuTile extends StatelessWidget {
     final compact = MediaQuery.sizeOf(context).height < 700;
 
     return Padding(
-      padding: EdgeInsets.only(bottom: compact ? 5 : 7),
+      padding: EdgeInsets.only(bottom: compact ? 6 : 8),
       child: Material(
         color: Colors.transparent,
         borderRadius: BorderRadius.circular(999),
@@ -822,7 +911,7 @@ class _MenuTile extends StatelessWidget {
           child: Container(
             padding: EdgeInsets.symmetric(
               horizontal: compact ? 10 : 12,
-              vertical: compact ? 7 : 9,
+              vertical: compact ? 8 : 10,
             ),
             decoration: BoxDecoration(
               gradient: active
@@ -830,29 +919,29 @@ class _MenuTile extends StatelessWidget {
                       begin: Alignment.centerLeft,
                       end: Alignment.centerRight,
                       colors: [
-                        Color(0x5539D8E8),
-                        Color(0x331387C9),
+                        Color(0x7739D8E8),
+                        Color(0x441387C9),
                       ],
                     )
                   : null,
-              color: active ? null : Colors.white.withValues(alpha: 0.07),
+              color: active ? null : Colors.white.withValues(alpha: 0.10),
               borderRadius: BorderRadius.circular(999),
               border: Border.all(
                 color: active
-                    ? Colors.white.withValues(alpha: 0.9)
-                    : Colors.white.withValues(alpha: 0.15),
-                width: active ? 1.8 : 1,
+                    ? Colors.white.withValues(alpha: 0.95)
+                    : Colors.white.withValues(alpha: 0.22),
+                width: active ? 2.2 : 1,
               ),
               boxShadow: active
                   ? [
                       BoxShadow(
-                        color: const Color(0xFF39D8E8).withValues(alpha: 0.45),
-                        blurRadius: 14,
-                        spreadRadius: 0,
+                        color: const Color(0xFF39D8E8).withValues(alpha: 0.6),
+                        blurRadius: 18,
+                        spreadRadius: 0.5,
                         offset: const Offset(0, 3),
                       ),
                       BoxShadow(
-                        color: Colors.white.withValues(alpha: 0.12),
+                        color: Colors.white.withValues(alpha: 0.15),
                         blurRadius: 6,
                         offset: const Offset(0, -1),
                       ),
@@ -861,30 +950,64 @@ class _MenuTile extends StatelessWidget {
             ),
             child: Row(
               children: [
-                Container(
-                  width: compact ? 30 : 34,
-                  height: compact ? 30 : 34,
+                // Solid accent bar — an unmissable "you are here" cue that
+                // doesn't rely on subtle color/opacity shifts alone.
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  width: active ? 4 : 0,
+                  height: compact ? 22 : 26,
+                  margin: EdgeInsets.only(right: active ? 8 : 0),
                   decoration: BoxDecoration(
-                    color: active
-                        ? Colors.white.withValues(alpha: 0.28)
-                        : Colors.white.withValues(alpha: 0.12),
-                    shape: BoxShape.circle,
+                    color: kAccent,
+                    borderRadius: BorderRadius.circular(4),
                     boxShadow: active
                         ? [
                             BoxShadow(
-                              color: Colors.white.withValues(alpha: 0.3),
+                              color: kAccent.withValues(alpha: 0.8),
                               blurRadius: 8,
                             ),
                           ]
                         : null,
                   ),
+                ),
+                Container(
+                  width: compact ? 34 : 38,
+                  height: compact ? 34 : 38,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: active
+                          ? const [Color(0xFF5CEBFA), Color(0xFF1387C9)]
+                          : const [Color(0xFF39D8E8), Color(0xFF0D567E)],
+                    ),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: active
+                          ? Colors.white.withValues(alpha: 0.95)
+                          : Colors.white.withValues(alpha: 0.55),
+                      width: active ? 1.8 : 1.2,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: (active ? kAccent : const Color(0xFF39D8E8))
+                            .withValues(alpha: active ? 0.75 : 0.45),
+                        blurRadius: active ? 14 : 8,
+                        spreadRadius: active ? 0.5 : 0,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
                   child: Icon(
                     icon,
                     color: Colors.white,
-                    size: compact ? 16 : 18,
+                    size: compact ? 18 : 20,
+                    shadows: const [
+                      Shadow(color: Color(0x66000000), blurRadius: 3),
+                    ],
                   ),
                 ),
-                SizedBox(width: compact ? 8 : 10),
+                SizedBox(width: compact ? 9 : 11),
                 Expanded(
                   child: Text(
                     title,
@@ -892,8 +1015,8 @@ class _MenuTile extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: Colors.white,
-                      fontSize: compact ? 13 : 15,
-                      fontWeight: active ? FontWeight.w800 : FontWeight.w500,
+                      fontSize: compact ? 14 : 16,
+                      fontWeight: active ? FontWeight.w800 : FontWeight.w600,
                       letterSpacing: active ? 0.5 : 0.2,
                       shadows: active
                           ? [
@@ -907,13 +1030,11 @@ class _MenuTile extends StatelessWidget {
                   ),
                 ),
                 Icon(
-                  active
-                      ? Icons.chevron_right_rounded
-                      : Icons.chevron_right_rounded,
+                  Icons.chevron_right_rounded,
                   color: active
-                      ? Colors.white.withValues(alpha: 0.9)
-                      : Colors.white.withValues(alpha: 0.3),
-                  size: compact ? 16 : 18,
+                      ? Colors.white.withValues(alpha: 0.95)
+                      : Colors.white.withValues(alpha: 0.4),
+                  size: compact ? 18 : 20,
                 ),
               ],
             ),

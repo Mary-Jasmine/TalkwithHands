@@ -1,4 +1,9 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+
+import '../services/background_music_service.dart';
+import '../ui/background_music_region.dart';
 
 class CalculatorGamePage extends StatefulWidget {
   const CalculatorGamePage({super.key});
@@ -11,6 +16,7 @@ class _CalculatorGamePageState extends State<CalculatorGamePage> {
   static const _assetRoot = 'assets/calcuavatars';
 
   String _display = '0';
+  String _expression = '';
   String? _pendingOperator;
   double? _storedValue;
   bool _replaceDisplay = false;
@@ -27,6 +33,7 @@ class _CalculatorGamePageState extends State<CalculatorGamePage> {
         _deleteLast();
       } else if (value == '%') {
         _display = _formatNumber(_currentValue() / 100);
+        _syncExpressionWithDisplay();
       } else if (value == '=') {
         _resolveOperation();
       } else {
@@ -35,26 +42,38 @@ class _CalculatorGamePageState extends State<CalculatorGamePage> {
     });
   }
 
+  // Keeps the equation preview ("12 + 5") in sync with whatever the person
+  // is currently typing for the right-hand operand.
+  void _syncExpressionWithDisplay() {
+    if (_pendingOperator != null && _storedValue != null) {
+      _expression =
+          '${_formatNumber(_storedValue!)} $_pendingOperator $_display';
+    }
+  }
+
   void _inputDigit(String digit) {
     if (_replaceDisplay || _display == '0') {
       _display = digit;
       _replaceDisplay = false;
-      return;
+    } else if (_display.length < 10) {
+      _display += digit;
     }
-    if (_display.length < 10) _display += digit;
+    _syncExpressionWithDisplay();
   }
 
   void _inputDecimal() {
     if (_replaceDisplay) {
       _display = '0.';
       _replaceDisplay = false;
-      return;
+    } else if (!_display.contains('.')) {
+      _display += '.';
     }
-    if (!_display.contains('.')) _display += '.';
+    _syncExpressionWithDisplay();
   }
 
   void _clearCalculator() {
     _display = '0';
+    _expression = '';
     _storedValue = null;
     _pendingOperator = null;
     _replaceDisplay = false;
@@ -64,9 +83,10 @@ class _CalculatorGamePageState extends State<CalculatorGamePage> {
     if (_replaceDisplay || _display.length <= 1) {
       _display = '0';
       _replaceDisplay = false;
-      return;
+    } else {
+      _display = _display.substring(0, _display.length - 1);
     }
-    _display = _display.substring(0, _display.length - 1);
+    _syncExpressionWithDisplay();
   }
 
   void _chooseOperator(String operator) {
@@ -76,6 +96,7 @@ class _CalculatorGamePageState extends State<CalculatorGamePage> {
     _storedValue = _currentValue();
     _pendingOperator = operator;
     _replaceDisplay = true;
+    _expression = '${_formatNumber(_storedValue!)} $operator';
   }
 
   void _resolveOperation() {
@@ -92,6 +113,8 @@ class _CalculatorGamePageState extends State<CalculatorGamePage> {
       _ => right,
     };
 
+    _expression =
+        '${_formatNumber(left)} $operator ${_formatNumber(right)} =';
     _display = result.isNaN ? 'Error' : _formatNumber(result);
     _storedValue = null;
     _pendingOperator = null;
@@ -113,7 +136,9 @@ class _CalculatorGamePageState extends State<CalculatorGamePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: LayoutBuilder(
+      body: BackgroundMusicRegion(
+        track: BackgroundMusicTrack.calculator,
+        child: LayoutBuilder(
         builder: (context, constraints) {
           final canvasWidth = constraints.maxWidth.clamp(0.0, 430.0).toDouble();
           final canvasHeight = constraints.maxHeight;
@@ -131,16 +156,15 @@ class _CalculatorGamePageState extends State<CalculatorGamePage> {
                     ),
                   ),
                   SafeArea(
-                    child: SingleChildScrollView(
-                      physics: const ClampingScrollPhysics(),
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(
-                          minHeight:
-                              canvasHeight - MediaQuery.of(context).padding.top,
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(10, 10, 10, 0),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.topCenter,
+                        child: SizedBox(
+                          width: canvasWidth - 20,
                           child: Column(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
                               _buildTopBar(context),
                               const SizedBox(height: 8),
@@ -153,7 +177,6 @@ class _CalculatorGamePageState extends State<CalculatorGamePage> {
                               _buildWebStage(),
                               const SizedBox(height: 12),
                               _buildCalculator(),
-                              const SizedBox(height: 24),
                             ],
                           ),
                         ),
@@ -194,17 +217,12 @@ class _CalculatorGamePageState extends State<CalculatorGamePage> {
                   ),
                   const _DecorativeAsset(
                     asset: 'bulb.png',
-                    right: 18,
+                    right: 4,
                     top: 386,
-                    width: 46,
+                    width: 38,
                     rotation: 0.16,
                   ),
-                  const _DecorativeAsset(
-                    asset: 'rainbow.png',
-                    left: -6,
-                    bottom: 248,
-                    width: 83,
-                  ),
+
                   const _DecorativeAsset(
                     asset: 'avatar.png',
                     right: 6,
@@ -222,6 +240,7 @@ class _CalculatorGamePageState extends State<CalculatorGamePage> {
             ),
           );
         },
+        ),
       ),
     );
   }
@@ -285,66 +304,111 @@ class _CalculatorGamePageState extends State<CalculatorGamePage> {
       ['0', '.', '='],
     ];
 
-    return Container(
-      width: 196,
-      padding: const EdgeInsets.fromLTRB(8, 0, 8, 10),
-      decoration: BoxDecoration(
-        color: Colors.black,
-        borderRadius: BorderRadius.circular(11),
-        border: Border.all(color: const Color(0xFF1E1E1E), width: 2),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x66000000),
-            blurRadius: 8,
-            offset: Offset(0, 5),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final calculatorWidth =
+            math.min(constraints.maxWidth - 16, 330.0).clamp(0.0, 330.0);
+        final buttonGap = calculatorWidth < 285 ? 8.0 : 10.0;
+        final horizontalPadding = calculatorWidth < 285 ? 10.0 : 14.0;
+        // Estimate a nominal button size only for the height calculation.
+        // Actual widths are handed off to Expanded below so the row can
+        // never overflow, even by a fraction of a pixel.
+        final nominalButtonWidth =
+            (calculatorWidth - horizontalPadding * 2 - buttonGap * 3) / 4;
+        final buttonHeight =
+            (nominalButtonWidth * 0.78).clamp(44.0, 56.0).toDouble();
+
+        return Container(
+          width: calculatorWidth,
+          padding: EdgeInsets.fromLTRB(
+            horizontalPadding,
+            0,
+            horizontalPadding,
+            12,
           ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Container(
-            height: 51,
-            alignment: Alignment.centerRight,
-            padding: const EdgeInsets.only(right: 3),
-            decoration: const BoxDecoration(
-              border: Border(
-                bottom: BorderSide(color: Color(0xFF242424), width: 1),
+          decoration: BoxDecoration(
+            color: Colors.black,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFF1E1E1E), width: 2),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x66000000),
+                blurRadius: 8,
+                offset: Offset(0, 5),
               ),
-            ),
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerRight,
-              child: Text(
-                _display,
-                maxLines: 1,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 34,
-                  height: 1,
-                  fontWeight: FontWeight.w900,
+            ],
+          ),
+          child: Column(
+            children: [
+              Container(
+                alignment: Alignment.centerRight,
+                padding: const EdgeInsets.only(right: 4, top: 6, bottom: 4),
+                decoration: const BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(color: Color(0xFF242424), width: 1),
+                  ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    if (_expression.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 2),
+                        child: Text(
+                          _expression,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.55),
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    SizedBox(
+                      height: 44,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerRight,
+                        child: Text(
+                          _display,
+                          maxLines: 1,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 40,
+                            height: 1,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          for (final row in rows) ...[
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                for (final value in row) ...[
-                  _CalcButton(
-                    label: value,
-                    wide: value == '=',
-                    onTap: () => _onCalculatorTap(value),
-                  ),
-                  if (value != row.last) const SizedBox(width: 9),
-                ],
+              const SizedBox(height: 12),
+              for (final row in rows) ...[
+                Row(
+                  children: [
+                    for (final value in row) ...[
+                      Expanded(
+                        flex: value == '=' ? 2 : 1,
+                        child: _CalcButton(
+                          label: value,
+                          height: buttonHeight,
+                          onTap: () => _onCalculatorTap(value),
+                        ),
+                      ),
+                      if (value != row.last) SizedBox(width: buttonGap),
+                    ],
+                  ],
+                ),
+                if (row != rows.last) SizedBox(height: buttonGap),
               ],
-            ),
-            if (row != rows.last) const SizedBox(height: 8),
-          ],
-        ],
-      ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -425,13 +489,13 @@ class _CircleIconButton extends StatelessWidget {
 
 class _CalcButton extends StatelessWidget {
   final String label;
-  final bool wide;
+  final double height;
   final VoidCallback onTap;
 
   const _CalcButton({
     required this.label,
+    required this.height,
     required this.onTap,
-    this.wide = false,
   });
 
   bool get _filled =>
@@ -439,7 +503,6 @@ class _CalcButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final width = wide ? 85.0 : 38.0;
     return Material(
       color: _filled ? const Color(0xFFFFB20D) : Colors.black,
       borderRadius: BorderRadius.circular(7),
@@ -447,19 +510,22 @@ class _CalcButton extends StatelessWidget {
         borderRadius: BorderRadius.circular(7),
         onTap: onTap,
         child: Container(
-          width: width,
-          height: 35,
+          width: double.infinity,
+          height: height,
           alignment: Alignment.center,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(7),
             border: Border.all(color: const Color(0xFFFFB20D), width: 2),
           ),
-          child: Text(
-            label,
-            style: TextStyle(
-              color: _filled ? Colors.black : Colors.white,
-              fontSize: label.length > 1 ? 14 : 19,
-              fontWeight: FontWeight.w900,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              label,
+              style: TextStyle(
+                color: _filled ? Colors.black : Colors.white,
+                fontSize: label.length > 1 ? 18 : 28,
+                fontWeight: FontWeight.w900,
+              ),
             ),
           ),
         ),

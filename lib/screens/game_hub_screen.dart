@@ -6,6 +6,8 @@ import 'package:sign_language_app/games/calculator_game.dart' as calculator;
 import 'package:sign_language_app/games/guess_asl_game.dart' as guess_asl;
 import 'package:sign_language_app/games/guess_me_game.dart' as guess_me;
 import '../services/progress_service.dart';
+import '../services/background_music_service.dart';
+import '../ui/background_music_region.dart';
 import '../ui/app_shell.dart';
 
 class GameHubScreen extends StatefulWidget {
@@ -71,7 +73,9 @@ class _GameHubScreenState extends State<GameHubScreen> {
         onClose: () => Navigator.of(context).pop(),
         activeScreen: 'Game',
       ),
-      body: _GameStageBackground(
+      body: BackgroundMusicRegion(
+        track: BackgroundMusicTrack.gameHub,
+        child: _GameStageBackground(
         child: Stack(
           children: [
             const Positioned.fill(
@@ -192,6 +196,7 @@ class _GameHubScreenState extends State<GameHubScreen> {
         ),
           ],
         ),
+        ),
       ),
     );
   }
@@ -210,9 +215,9 @@ class _GameStageBackground extends StatelessWidget {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            Color(0xFF1B0F42),
-            Color(0xFF3F1E7A),
-            Color(0xFF8A2AB0),
+            Color.fromARGB(255, 61, 67, 196),
+            Color.fromARGB(255, 34, 20, 139),
+            Color.fromARGB(159, 203, 125, 208),
             Color.fromARGB(255, 20, 3, 175),
           ],
           stops: [0, 0.38, 0.72, 1],
@@ -231,7 +236,7 @@ class _GameStagePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     // Soft, blurred glow orbs give the stage depth instead of flat color.
     _drawGlowOrb(canvas, Offset(size.width * 0.14, size.height * 0.16),
-        size.width * 0.55, const Color(0xFFFFD43B));
+        size.width * 0.55, const Color.fromARGB(255, 112, 92, 17));
     _drawGlowOrb(canvas, Offset(size.width * 0.9, size.height * 0.1),
         size.width * 0.5, const Color(0xFF4DE8FF));
     _drawGlowOrb(canvas, Offset(size.width * 0.82, size.height * 0.68),

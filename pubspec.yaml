@@ -39,9 +39,12 @@ dependencies:
   flutter_facebook_auth: ^7.1.1
   flutter_dotenv: ^6.0.0
   video_player: ^2.10.0
+  cached_network_image: ^3.3.1
+  audioplayers: ^6.1.0
   photo_view: ^0.15.0  
   webview_flutter: ^4.10.0
   image_picker: ^1.1.2
+  flutter_shaders: ^0.1.3
     
 
 dev_dependencies:
@@ -51,6 +54,8 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  shaders:
+    - shaders/chroma_key.frag
   assets:
     - assets/360/    
     - web/icons/Icon-192.png
@@ -58,7 +63,17 @@ flutter:
     - assets/images/home_design.png
     - assets/images/guess_asl_icon.png
     - assets/images/guess_me_icon.png
+    - assets/images/Left.png
+    - assets/images/Front.png
+    - assets/images/Right.png
     - assets/guess_me/videos/
+    - assets/guess_me/videos/Alphabet/
+    - assets/guess_me/videos/Animal/
+    - assets/guess_me/videos/Color/
+    - assets/guess_me/videos/Direction and Location/
+    - assets/guess_me/videos/Emotion/
+    - assets/guess_me/videos/Environment/
+    - assets/guess_me/videos/Family/
     - assets/images/PPS.jpg
     - assets/images/alphabets/
     - assets/images/numbers/
@@ -67,8 +82,9 @@ flutter:
    # Video-heavy folders are excluded from the share APK to keep the build small.
     # Use backend-hosted videos for tutorial playback in the distributed app.
     - assets/ml/
-    - assets/three.min.js
+    - assets/js/three.min.js
     - assets/images/hand.png
+    - assets/Kumusta.mp4
     - assets/guess_asl/
     - assets/kalinaw/
     - lib/.env
@@ -78,10 +94,14 @@ flutter:
     - assets/images/charwavenobg.png
     - assets/images/home_design.png
     - assets/images/home_bg_clean.png
-    - assets/images/renz.jpg
+    - assets/images/renzz.jpg
     - assets/images/jade.jpg
-    - assets/images/derama.jpg
+    - assets/images/jjderama.jpg
     - assets/images/ecal.png
     - assets/calcuavatars/
+    - assets/audio/
+    - backend/data/basic-words.json
+    - backend/data/alphabet-signs.json
+    - backend/data/number-signs.json
     - assets/images/diana.jpg
     - assets/images/mary.jpg

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../models/user_progress.dart';
+import '../services/activity_time_service.dart';
 import '../services/progress_service.dart';
 import '../ui/app_shell.dart';
 
@@ -275,11 +276,17 @@ class _ProgressContent extends StatelessWidget {
               const SizedBox(width: 8),
               _StreakBadge(days: stats.streakDays),
               const SizedBox(width: 8),
-              _StatBadge(
-                icon: 'mdi:timer-outline',
-                value: _formatDuration(stats.secondsSpent),
-                label: 'Time\nSpent',
-                color: const Color(0xFFE0317A),
+              ValueListenableBuilder<int>(
+                valueListenable:
+                    ActivityTimeService.instance.liveSessionSeconds,
+                builder: (context, liveSeconds, _) {
+                  return _StatBadge(
+                    icon: 'mdi:timer-outline',
+                    value: _formatDuration(stats.secondsSpent + liveSeconds),
+                    label: 'Time\nSpent',
+                    color: const Color(0xFFE0317A),
+                  );
+                },
               ),
             ],
           ),
@@ -672,10 +679,11 @@ class _EmptyProgressCard extends StatelessWidget {
 }
 
 String _formatDuration(int seconds) {
-  final totalMinutes = seconds ~/ 60;
-  final hours = totalMinutes ~/ 60;
-  final minutes = totalMinutes % 60;
-  return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}';
+  final safeSeconds = math.max(0, seconds);
+  final hours = safeSeconds ~/ 3600;
+  final minutes = (safeSeconds % 3600) ~/ 60;
+  final secs = safeSeconds % 60;
+  return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
 }
 
 const _usageColors = [
@@ -709,9 +717,9 @@ class _StatBadge extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) { 
+  Widget build(BuildContext context) {
     return Container(
-      width: 82,
+      width: 104,
       padding: const EdgeInsets.symmetric(vertical: 12),
       decoration: BoxDecoration(
         color: color,
@@ -729,12 +737,19 @@ class _StatBadge extends StatelessWidget {
         children: [
           _IIcon(icon, size: 20),
           const SizedBox(height: 4),
-          Text(
-            value,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 20,
-              fontWeight: FontWeight.w900,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                value,
+                maxLines: 1,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
             ),
           ),
           const SizedBox(height: 2),

@@ -1,7 +1,7 @@
 [
   {
     "id": "1",
-    "number":1,
+    "number": 1,
     "title": " 1",
     "image_asset": "assets/images/numbers/1.png",
     "image_url": "",
@@ -9,7 +9,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=1pbzPYfpiHiPZ3CCiFPkMb2YER7vzzjus&export=download&confirm=t",
     "description": "ASL hand sign for number 1.",
     "sort_order": 1,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "2",
@@ -21,7 +24,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=1VqszLjN-kWWFEOAN4hpToSqm5A_EaCah&export=download&confirm=t",
     "description": "ASL hand sign for number 2.",
     "sort_order": 2,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "3",
@@ -33,7 +39,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=1MLJRKUrIrCkvcsJsSC8MMI5i7FHj-WZ6&export=download&confirm=t",
     "description": "ASL hand sign for number 3.",
     "sort_order": 3,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "4",
@@ -45,7 +54,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=1KWTROmJVhagrP-dOKFQSt3kbY9F8sdhz&export=download&confirm=t",
     "description": "ASL hand sign for number 4.",
     "sort_order": 4,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "5",
@@ -57,7 +69,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=168P0L86yml_DX0MuIEILEQHngNSYnpmE&export=download&confirm=t",
     "description": "ASL hand sign for number 5.",
     "sort_order": 5,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "6",
@@ -69,7 +84,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=1HK1Y5OUrcQs67bQlBChmGBGYqsnx5-YZ&export=download&confirm=t",
     "description": "ASL hand sign for number 6.",
     "sort_order": 6,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "7",
@@ -81,7 +99,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=1xc9gK2MVB4bL1BLlQcgFB7Maq2gn_Ys4&export=download&confirm=t",
     "description": "ASL hand sign for number 7.",
     "sort_order": 7,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "8",
@@ -93,7 +114,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=1vF5CTWl8ENJLaTOqkzGPux2fJwbMj1Jx&export=download&confirm=t",
     "description": "ASL hand sign for number 8.",
     "sort_order": 8,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "9",
@@ -105,7 +129,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=1gqUlMDyE6AgH6z4ogsTszIekoc_MugLs&export=download&confirm=t",
     "description": "ASL hand sign for number 9.",
     "sort_order": 9,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "10",
@@ -117,7 +144,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=1Nj4QxlN7s9mvplXYN-USIpHuxBboC472&export=download&confirm=t",
     "description": "ASL hand sign for number 10.",
     "sort_order": 10,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "11",
@@ -129,7 +159,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=1DJd1ovHzufbydyq9Z1aBAUf-wAtBx2qJ&export=download&confirm=t",
     "description": "ASL hand sign for number 11.",
     "sort_order": 11,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "12",
@@ -141,7 +174,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=1C-E6jtTNkqZYiR9PgiVikQe_hZjZHHsK&export=download&confirm=t",
     "description": "ASL hand sign for number 12.",
     "sort_order": 12,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "13",
@@ -153,7 +189,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=1WW05Uc5czPxISQq13Qg-U4mpBKxX7z9R&export=download&confirm=t",
     "description": "ASL hand sign for number 13.",
     "sort_order": 13,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "14",
@@ -165,7 +204,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=1u1Rf8r60Gpp8p6crE2uCDiTL9dZA4mbC&export=download&confirm=t",
     "description": "ASL hand sign for number 14.",
     "sort_order": 14,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "15",
@@ -177,7 +219,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=1B60F49tpm3IO2ex6jKSrs1EWIXDMe8Tk&export=download&confirm=t",
     "description": "ASL hand sign for number 15.",
     "sort_order": 15,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "16",
@@ -189,7 +234,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=1WG039O5esukXryh5f-kV88PGr_sf84P8&export=download&confirm=t",
     "description": "ASL hand sign for number 16.",
     "sort_order": 16,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "17",
@@ -201,7 +249,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=1dK2CI6Q3FEpaDw7AzMJG4ttz4RyNR5Gy&export=download&confirm=t",
     "description": "ASL hand sign for number 17.",
     "sort_order": 17,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "18",
@@ -213,7 +264,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=1jwMINYLUNGAlC-c02E7REWi0Ibfig45z&export=download&confirm=t",
     "description": "ASL hand sign for number 18.",
     "sort_order": 18,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "19",
@@ -225,7 +279,10 @@
     "video_url": "https://drive.usercontent.google.com/download?id=1aS_grjCkS_m5_LMiRZn2STxwdLL7TaRl&export=download&confirm=t",
     "description": "ASL hand sign for number 19.",
     "sort_order": 19,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   },
   {
     "id": "20",
@@ -237,6 +294,9 @@
     "video_url": "https://drive.usercontent.google.com/download?id=1LZL8S1VhLfquu-HTMbGRwXzmNLvPhT9j&export=download&confirm=t",
     "description": "ASL hand sign for number 20.",
     "sort_order": 20,
-    "is_active": true
+    "is_active": true,
+    "front_video_url": "",
+    "left_video_url": "",
+    "right_video_url": ""
   }
 ]

@@ -1,11 +1,16 @@
 import 'dart:math' as math;
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../models/basic_word.dart';
+import '../services/background_music_service.dart';
 import '../services/basic_word_service.dart';
 import '../services/progress_service.dart';
+import '../ui/background_music_region.dart';
 import '../ui/app_shell.dart';
+import '../utils/url_helper.dart';
+import '../utils/video_url_utils.dart';
 import 'sign_detector_screen.dart';
 import 'tutorial_video_screen.dart';
 
@@ -14,8 +19,14 @@ const kVividBlue = Color(0xFF1500C8);
 const kAccent = Color(0xFF11B7CB);
 const kGreen = Color(0xFF34C759);
 
+const Set<String> _excludedBasicWordCategories = {
+  'alphabet',
+  'alphabets',
+  'number',
+  'numbers',
+};
+
 const List<String> _knownCategories = [
-  'Alphabet',
   'Animal',
   'Color',
   'Days of the week',
@@ -35,7 +46,6 @@ const List<String> _knownCategories = [
   'Months',
   'NOT EDIT',
   'Not Edited',
-  'Numbers',
   'Operations',
   'Person',
   'Personal Things',
@@ -53,22 +63,7 @@ const List<String> _knownCategories = [
 
 // ── Sign language sets ──────────────────────────────────────────────────────
 // Categories shown when the user switches the toggle to "FSL Signs".
-const List<String> _fslCategories = [
-  'Animal',
-  'Color',
-  'Days of the week',
-  'Emotions',
-  'Fruits',
-  'Months',
-  'Person',
-  'Questions',
-  'School',
-];
-
-enum SignLanguage { asl, fsl }
-
 const Map<String, IconData> _categoryIcons = {
-  'Alphabet': Icons.abc_rounded,
   'Animal': Icons.pets_rounded,
   'Color': Icons.palette_outlined,
   'Days of the week': Icons.calendar_view_week_outlined,
@@ -88,7 +83,6 @@ const Map<String, IconData> _categoryIcons = {
   'Months': Icons.calendar_month_outlined,
   'NOT EDIT': Icons.block_outlined,
   'Not Edited': Icons.block_outlined,
-  'Numbers': Icons.tag_rounded,
   'Operations': Icons.calculate_outlined,
   'Person': Icons.person_outline_rounded,
   'Personal Things': Icons.person_outline_rounded,
@@ -103,6 +97,8 @@ const Map<String, IconData> _categoryIcons = {
   'Time': Icons.schedule_outlined,
   'Transportation': Icons.directions_car_outlined,
 };
+
+enum SignLanguage { asl, fsl }
 
 class BasicWordsScreen extends StatefulWidget {
   final String userName;
@@ -122,10 +118,10 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
   final _searchFocusNode = FocusNode();
   late Future<List<BasicWord>> _wordFuture;
   String _query = '';
+  SignLanguage _signLanguage = SignLanguage.asl;
 
   // null = show category landing grid; non-null = show word list for that category
   String? _selectedCategory;
-  SignLanguage _signLanguage = SignLanguage.asl;
 
   Future<void> _recordLearned(BasicWord word) async {
     try {
@@ -159,41 +155,65 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
         _wordFuture = BasicWordService().listBasicWords();
       });
 
+  bool _isBasicWordCategory(BasicWord word) {
+    return !_excludedBasicWordCategories.contains(
+      word.category.trim().toLowerCase(),
+    );
+  }
+
   List<String> _categories(List<BasicWord> words) {
-    final cats = <String>{..._knownCategories};
-    for (final w in words) {
+    final playableWords = words
+        .where((word) => _isBasicWordCategory(word) && _hasTutorialVideo(word))
+        .toList();
+    final cats = <String>{};
+    for (final w in playableWords) {
       if (w.category.trim().isNotEmpty) cats.add(w.category);
     }
-    final filtered = cats.where((c) {
-      final isFsl = _fslCategories.contains(c);
-      return _signLanguage == SignLanguage.fsl ? isFsl : !isFsl;
-    });
-    return filtered.toList()..sort();
+    return cats.toList()..sort();
   }
 
   List<BasicWord> _wordsForCategory(List<BasicWord> words, String category) =>
-      words.where((w) => w.category == category).toList();
+      words
+          .where((w) =>
+              _isBasicWordCategory(w) &&
+              w.category == category &&
+              _hasTutorialVideo(w))
+          .toList();
 
   List<BasicWord> _searchResults(List<BasicWord> words) {
     if (_query.isEmpty) return [];
     return words.where((w) {
-      final isFsl = _fslCategories.contains(w.category);
-      final matchesLanguage =
-          _signLanguage == SignLanguage.fsl ? isFsl : !isFsl;
-      if (!matchesLanguage) return false;
+      if (!_isBasicWordCategory(w)) return false;
+      if (!_hasTutorialVideo(w)) return false;
       return w.title.toLowerCase().contains(_query) ||
           w.category.toLowerCase().contains(_query) ||
           w.description.toLowerCase().contains(_query);
     }).toList();
   }
 
+  bool _hasTutorialVideo(BasicWord word) {
+    return hasPlayableVideoSource(
+      videoAsset: word.videoAsset,
+      videoUrl: word.videoUrl,
+      frontVideoUrl: word.frontVideoUrl,
+      leftVideoUrl: word.leftVideoUrl,
+      rightVideoUrl: word.rightVideoUrl,
+    );
+  }
+
   void _openVideo(BasicWord word) {
+    if (!_hasTutorialVideo(word)) return;
     _recordLearned(word);
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => TutorialVideoScreen(
         title: word.title,
+        imageAsset: word.imageAsset,
+        imageUrl: word.imageUrl,
         videoAsset: word.videoAsset,
         videoUrl: word.videoUrl,
+        frontVideoUrl: word.frontVideoUrl,
+        leftVideoUrl: word.leftVideoUrl,
+        rightVideoUrl: word.rightVideoUrl,
         activityCategory: 'basic_word',
       ),
     ));
@@ -214,7 +234,9 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
         onClose: () => Navigator.of(context).pop(),
         activeScreen: 'Basic Words',
       ),
-      body: AppBackground(
+      body: BackgroundMusicRegion(
+        track: BackgroundMusicTrack.page,
+        child: AppBackground(
         child: Stack(
           children: [
             const Positioned.fill(
@@ -254,8 +276,9 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
                   ),
 
                   // ── ASL / FSL switch ─────────────────────────────────────
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+                  if (false)
+                    Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 0),
                     child: Center(
                       child: Container(
                         padding: const EdgeInsets.all(4),
@@ -298,101 +321,144 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
                   ),
 
                   // ── Search bar ────────────────────────────────────────────
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Container(
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: _query.isNotEmpty
-                                    ? kVividBlue
-                                    : const Color(0xFFCCCCCC),
-                                width: 1.8,
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.08),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            child: Row(
-                              children: [
-                                const Padding(
-                                  padding: EdgeInsets.symmetric(horizontal: 14),
-                                  child: Icon(Icons.search_rounded,
-                                      color: Color(0xFF9DA4AD), size: 22),
-                                ),
-                                Expanded(
-                                  child: TextField(
-                                    controller: _searchController,
-                                    focusNode: _searchFocusNode,
-                                    style: const TextStyle(
-                                        color: Colors.black87, fontSize: 14),
-                                    decoration: const InputDecoration(
-                                      hintText: 'Search words here...',
-                                      hintStyle:
-                                          TextStyle(color: Color(0xFF9DA4AD)),
-                                      border: InputBorder.none,
-                                      isDense: true,
-                                      contentPadding: EdgeInsets.symmetric(
-                                          horizontal: 0, vertical: 7),
-                                    ),
-                                  ),
-                                ),
-                                if (_query.isNotEmpty)
-                                  GestureDetector(
-                                    onTap: _clearSearch,
-                                    child: const Padding(
-                                      padding: EdgeInsets.only(right: 14),
-                                      child: Icon(Icons.close_rounded,
-                                          color: Color(0xFF9DA4AD), size: 20),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        // Practice button
-                        Material(
-                          color: kGreen,
-                          borderRadius: BorderRadius.circular(20),
-                          child: InkWell(
-                            onTap: () {
-                              Navigator.of(context).push(MaterialPageRoute(
-                                builder: (_) => const SignDetectorScreen(
-                                  initialMode: DetectionMode.words,
-                                  lockMode: true,
-                                  captureKind: CaptureKind.video,
-                                  title: 'Basic Word Practice',
-                                ),
-                              ));
-                            },
-                            borderRadius: BorderRadius.circular(20),
+                  SizedBox(
+                    height: math.max(
+                      44.0,
+                      MediaQuery.sizeOf(context).height * 0.055,
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 25),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(
                             child: Container(
-                              height: 40,
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 14),
-                              alignment: Alignment.center,
-                              child: const Text(
-                                'Practice',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(32),
+                                border: Border.all(
+                                  color: _query.isNotEmpty
+                                      ? kVividBlue
+                                      : const Color(0xFFCCCCCC),
+                                  width: 1.8,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.08),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: Row(
+                                children: [
+                                  const Padding(
+                                    padding:
+                                        EdgeInsets.symmetric(horizontal: 9),
+                                    child: Icon(
+                                      Icons.search_rounded,
+                                      color: Color(0xFF9DA4AD),
+                                      size: 24,
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: TextField(
+                                      controller: _searchController,
+                                      focusNode: _searchFocusNode,
+                                      textAlignVertical:
+                                          TextAlignVertical.center,
+                                      style: const TextStyle(
+                                        color: Colors.black87,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w400,
+                                      ),
+                                      decoration: const InputDecoration(
+                                        hintText: 'Search words..',
+                                        hintStyle:
+                                            TextStyle(color: Color(0xFF9DA4AD)),
+                                        border: InputBorder.none,
+                                        contentPadding: EdgeInsets.symmetric(
+                                            horizontal: 0, vertical: 9),
+                                      ),
+                                    ),
+                                  ),
+                                  if (_query.isNotEmpty)
+                                    GestureDetector(
+                                      onTap: _clearSearch,
+                                      child: const Padding(
+                                        padding: EdgeInsets.only(right: 18),
+                                        child: Icon(
+                                          Icons.close_rounded,
+                                          color: Color(0xFF9DA4AD),
+                                          size: 40,
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          // Practice button — compact and responsive: scales
+                          // with screen width (capped) so it stays small on
+                          // phones but doesn't look cramped on tablets, while
+                          // the search bar keeps the majority of the space.
+                          SizedBox(
+                            width: math.min(
+                              120.0,
+                              math.max(
+                                92.0,
+                                MediaQuery.sizeOf(context).width * 0.24,
+                              ),
+                            ),
+                            child: Material(
+                              color: kGreen,
+                              borderRadius: BorderRadius.circular(32),
+                              child: InkWell(
+                                onTap: () {
+                                  Navigator.of(context).push(MaterialPageRoute(
+                                    builder: (_) => const SignDetectorScreen(
+                                      initialMode: DetectionMode.words,
+                                      lockMode: true,
+                                      captureKind: CaptureKind.video,
+                                      title: 'Basic Word Practice',
+                                    ),
+                                  ));
+                                },
+                                borderRadius: BorderRadius.circular(32),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8),
+                                  alignment: Alignment.center,
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.play_circle_fill_rounded,
+                                        color: Colors.white,
+                                        size: 16,
+                                      ),
+                                      SizedBox(width: 4),
+                                      Flexible(
+                                        child: Text(
+                                          'Practice',
+                                          textAlign: TextAlign.center,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
 
@@ -428,6 +494,7 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
         ),
           ],
         ),
+        ),
       ),
     );
   }
@@ -436,7 +503,9 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
   Widget _buildCategoryGrid(List<String> categories, List<BasicWord> allWords) {
     // Count words per category for badge
     final wordCount = <String, int>{};
-    for (final w in allWords) {
+    for (final w in allWords.where(
+      (word) => _isBasicWordCategory(word) && _hasTutorialVideo(word),
+    )) {
       wordCount[w.category] = (wordCount[w.category] ?? 0) + 1;
     }
 
@@ -1061,12 +1130,15 @@ class _WordThumbnail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (word.imageUrl.isNotEmpty) {
-      return Image.network(
-        word.imageUrl,
+      return CachedNetworkImage(
+        imageUrl: getOptimizedUrl(word.imageUrl, width: 400),
         fit: BoxFit.cover,
         width: double.infinity,
         height: double.infinity,
-        errorBuilder: (_, __, ___) => _PlaceholderThumb(title: word.title),
+        placeholder: (_, __) => const Center(
+          child: CircularProgressIndicator(color: kAccent, strokeWidth: 2),
+        ),
+        errorWidget: (_, __, ___) => _PlaceholderThumb(title: word.title),
       );
     }
     if (word.imageAsset.isNotEmpty) {

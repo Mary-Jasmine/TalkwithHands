@@ -1,24 +1,41 @@
 import 'dart:async';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:video_player/video_player.dart';
 
 import '../services/progress_service.dart';
 import '../services/video_player_service.dart';
+import '../ui/background_music_region.dart';
 import '../ui/app_shell.dart';
+import '../utils/url_helper.dart';
+import '../utils/video_url_utils.dart';
+
+enum _TutorialView { left, front, right }
 
 class TutorialVideoScreen extends StatefulWidget {
   final String title;
+  final String imageAsset;
+  final String imageUrl;
   final String videoAsset;
   final String videoUrl;
+  final String frontVideoUrl;
+  final String leftVideoUrl;
+  final String rightVideoUrl;
   final String? activityCategory;
 
   const TutorialVideoScreen({
     super.key,
     required this.title,
+    this.imageAsset = '',
+    this.imageUrl = '',
     required this.videoAsset,
     this.videoUrl = '',
+    this.frontVideoUrl = '',
+    this.leftVideoUrl = '',
+    this.rightVideoUrl = '',
     this.activityCategory,
   });
 
@@ -35,25 +52,97 @@ class _TutorialVideoScreenState extends State<TutorialVideoScreen> {
   Offset _offset = Offset.zero;
   Offset _previousOffset = Offset.zero;
   bool _isFullscreen = false;
+  bool _controlsVisible = false;
+  bool _loadingVideo = true;
+  bool _frontSlowQueued = false;
+  Timer? _controlsTimer;
   late final DateTime _sessionStartedAt;
+  _TutorialView _activeView = _TutorialView.front;
 
-  static const List<double> _speeds = [0.5, 1.0, 1.5, 2.0];
+  static const List<double> _speeds = [0.5, 0.75, 1.0, 1.5, 2.0];
+
+  bool get _hasDefault =>
+      normalizePlayableVideoUrl(widget.videoUrl).isNotEmpty ||
+      widget.videoAsset.trim().isNotEmpty;
+  bool get _hasFront =>
+      normalizePlayableVideoUrl(widget.frontVideoUrl).isNotEmpty;
+  bool get _hasLeft =>
+      normalizePlayableVideoUrl(widget.leftVideoUrl).isNotEmpty;
+  bool get _hasRight =>
+      normalizePlayableVideoUrl(widget.rightVideoUrl).isNotEmpty;
 
   @override
   void initState() {
     super.initState();
     _sessionStartedAt = DateTime.now();
-    _initialize();
+    _playFrontSequence();
   }
 
-  Future<void> _initialize() async {
+  Future<void> _playFrontSequence() async {
+    setState(() {
+      _activeView = _TutorialView.front;
+      _frontSlowQueued = _hasFront;
+    });
+
+    if (_hasDefault) {
+      await _loadVideo(
+        videoUrl: widget.videoUrl,
+        videoAsset: widget.videoAsset,
+        playbackSpeed: 1.0,
+        autoPlayFrontSlow: _hasFront,
+      );
+      return;
+    }
+
+    await _loadVideo(
+      videoUrl: widget.frontVideoUrl,
+      videoAsset: '',
+      playbackSpeed: 0.75,
+    );
+  }
+
+  Future<void> _playView(_TutorialView view) async {
+    if (view == _TutorialView.front) {
+      await _playFrontSequence();
+      return;
+    }
+
+    final url =
+        view == _TutorialView.left ? widget.leftVideoUrl : widget.rightVideoUrl;
+    if (url.trim().isEmpty) return;
+
+    setState(() {
+      _activeView = view;
+      _frontSlowQueued = false;
+    });
+    await _loadVideo(videoUrl: url, videoAsset: '', playbackSpeed: 1.0);
+  }
+
+  Future<void> _loadVideo({
+    required String videoUrl,
+    required String videoAsset,
+    required double playbackSpeed,
+    bool autoPlayFrontSlow = false,
+  }) async {
+    final oldController = _controller;
+    oldController?.removeListener(_handlePlaybackUpdate);
+    setState(() {
+      _controller = null;
+      _error = null;
+      _loadingVideo = true;
+      _playbackSpeed = playbackSpeed;
+      _scale = 1.0;
+      _offset = Offset.zero;
+    });
+    await oldController?.dispose();
+
     try {
       final controller = await VideoPlayerService.createController(
         sources: VideoPlayerService.buildSources(
-          videoUrl: widget.videoUrl,
-          videoAsset: widget.videoAsset,
+          videoUrl: videoUrl,
+          videoAsset: videoAsset,
         ),
-        playbackSpeed: _playbackSpeed,
+        playbackSpeed: playbackSpeed,
       );
 
       if (!mounted) {
@@ -62,36 +151,67 @@ class _TutorialVideoScreenState extends State<TutorialVideoScreen> {
       }
 
       await controller.setVolume(0);
-
+      controller.addListener(_handlePlaybackUpdate);
       setState(() {
         _controller = controller;
-        _error = null;
+        _loadingVideo = false;
+        _frontSlowQueued = autoPlayFrontSlow;
       });
     } on VideoLoadException catch (error) {
       if (!mounted) return;
       setState(() {
+        _loadingVideo = false;
         _error = error.errors.isEmpty
             ? 'No tutorial video has been uploaded for this lesson yet.'
-            : 'Cannot play this tutorial video.\nPlease restart the backend and try again.';
+            : 'Cannot play this tutorial video.';
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _error =
-            'Cannot play this tutorial video.\nPlease restart the backend and try again.';
+        _loadingVideo = false;
+        _error = 'Cannot play this tutorial video.';
       });
     }
   }
 
+  void _handlePlaybackUpdate() {
+    final controller = _controller;
+    if (controller == null || !_frontSlowQueued || !_hasFront) return;
+
+    final value = controller.value;
+    final duration = value.duration;
+    if (!value.isInitialized || duration == Duration.zero) return;
+    if (value.position < duration - const Duration(milliseconds: 250)) return;
+
+    _frontSlowQueued = false;
+    unawaited(_loadVideo(
+      videoUrl: widget.frontVideoUrl,
+      videoAsset: '',
+      playbackSpeed: 0.75,
+    ));
+  }
+
   void _setSpeed(double speed) {
-    setState(() => _playbackSpeed = speed);
+    setState(() {
+      _playbackSpeed = speed;
+      _frontSlowQueued = false;
+    });
     _controller?.setPlaybackSpeed(speed);
+    _showControlsTemporarily();
   }
 
   void _resetZoom() {
     setState(() {
       _scale = 1.0;
       _offset = Offset.zero;
+    });
+  }
+
+  void _showControlsTemporarily() {
+    _controlsTimer?.cancel();
+    setState(() => _controlsVisible = true);
+    _controlsTimer = Timer(const Duration(seconds: 4), () {
+      if (mounted) setState(() => _controlsVisible = false);
     });
   }
 
@@ -132,174 +252,231 @@ class _TutorialVideoScreenState extends State<TutorialVideoScreen> {
   @override
   void dispose() {
     unawaited(_recordSessionTime());
+    _controlsTimer?.cancel();
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
       DeviceOrientation.portraitDown,
     ]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    _controller?.removeListener(_handlePlaybackUpdate);
     _controller?.dispose();
     super.dispose();
   }
 
-  Widget _buildZoomableVideo(VideoPlayerController? controller) {
+  @override
+  Widget build(BuildContext context) {
+    if (_isFullscreen) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        body: BackgroundMusicRegion(
+          track: null,
+          showToggle: false,
+          child: _buildVideoPanel(fullscreen: true),
+        ),
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: BackgroundMusicRegion(
+        track: null,
+        showToggle: false,
+        child: AppBackground(
+          dimmed: true,
+          child: Stack(
+            children: [
+              SafeArea(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final compact = constraints.maxHeight < 720;
+                    final videoWidth =
+                        (constraints.maxWidth - 16)
+                            .clamp(280.0, 760.0)
+                            .toDouble();
+                    return SingleChildScrollView(
+                      padding: EdgeInsets.fromLTRB(
+                        8,
+                        compact ? 24 : 34,
+                        8,
+                        18,
+                      ),
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          minHeight: constraints.maxHeight -
+                              MediaQuery.paddingOf(context).vertical -
+                              80,
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.start,
+                          children: [
+                            if (_hasSignImage) ...[
+                              _buildSignImage(compact: compact),
+                              SizedBox(height: compact ? 8 : 12),
+                            ],
+                            Text(
+                              widget.title,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: compact ? 30 : 36,
+                                fontWeight: FontWeight.w900,
+                                shadows: const [
+                                  Shadow(
+                                    color: Color(0x99000000),
+                                    blurRadius: 8,
+                                    offset: Offset(0, 3),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            SizedBox(height: compact ? 14 : 18),
+                            Center(
+                              child: SizedBox(
+                                width: videoWidth,
+                                child: AspectRatio(
+                                  aspectRatio:
+                                      _controller?.value.aspectRatio ?? 16 / 9,
+                                  child: _buildVideoPanel(),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 34),
+                            _buildViewButtons(),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              Positioned(
+                top: 18,
+                left: 18,
+                child: SafeArea(
+                  child: _HighlightedBackButton(
+                    onTap: () => Navigator.of(context).pop(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  bool get _hasSignImage =>
+      widget.imageUrl.trim().isNotEmpty || widget.imageAsset.trim().isNotEmpty;
+
+  Widget _buildSignImage({required bool compact}) {
+    final size = compact ? 104.0 : 128.0;
+    final image = _signImage();
+    return Container(
+      width: size,
+      height: size,
+      padding: const EdgeInsets.all(5),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF050505), Color(0xFF323232), Color(0xFF000000)],
+        ),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x99000000),
+            blurRadius: 12,
+            offset: Offset(0, 5),
+          ),
+        ],
+      ),
+      alignment: Alignment.center,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          color: Colors.black,
+          alignment: Alignment.center,
+          child: image,
+        ),
+      ),
+    );
+  }
+
+  Widget _signImage() {
+    final imageUrl = widget.imageUrl.trim();
+    final imageAsset = widget.imageAsset.trim();
+    if (imageUrl.toLowerCase().endsWith('.svg')) {
+      return SvgPicture.network(
+        imageUrl,
+        fit: BoxFit.contain,
+        placeholderBuilder: (_) => const SizedBox.shrink(),
+      );
+    }
+    if (imageUrl.isNotEmpty) {
+      return CachedNetworkImage(
+        imageUrl: getOptimizedUrl(imageUrl, width: 480),
+        fit: BoxFit.contain,
+        placeholder: (_, __) => const SizedBox.shrink(),
+        errorWidget: (_, __, ___) => const SizedBox.shrink(),
+      );
+    }
+    if (imageAsset.toLowerCase().endsWith('.svg')) {
+      return SvgPicture.asset(
+        imageAsset,
+        fit: BoxFit.contain,
+        placeholderBuilder: (_) => const SizedBox.shrink(),
+      );
+    }
+    if (imageAsset.isNotEmpty) {
+      return Image.asset(
+        imageAsset,
+        fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+      );
+    }
+    return const SizedBox.shrink();
+  }
+
+  Widget _buildVideoPanel({bool fullscreen = false}) {
+    final controller = _controller;
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _showControlsTemporarily,
+      onDoubleTap: _resetZoom,
       onScaleStart: (details) {
         _previousScale = _scale;
         _previousOffset = _offset;
       },
       onScaleUpdate: (details) {
         setState(() {
-          _scale = (_previousScale * details.scale).clamp(1.0, 4.0);
-          if (_scale > 1.0) {
-            _offset = _previousOffset + details.focalPointDelta;
-          } else {
-            _offset = Offset.zero;
-          }
+          _scale = (_previousScale * details.scale).clamp(1.0, 4.0).toDouble();
+          _offset = _scale > 1.0
+              ? _previousOffset + details.focalPointDelta
+              : Offset.zero;
         });
       },
-      onDoubleTap: _resetZoom,
       child: ClipRect(
-        child: Transform(
-          transform: Matrix4.identity()
-            ..translateByDouble(_offset.dx, _offset.dy, 0, 1)
-            ..scaleByDouble(_scale, _scale, 1, 1),
-          alignment: Alignment.center,
-          child: _buildVideoBody(controller),
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final controller = _controller;
-
-    if (_isFullscreen) {
-      return Scaffold(
-        backgroundColor: Colors.black,
-        body: Stack(
-          children: [
-            Center(
-              child: controller != null
-                  ? AspectRatio(
-                      aspectRatio: controller.value.aspectRatio,
-                      child: _buildZoomableVideo(controller),
-                    )
-                  : const SizedBox(),
-            ),
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: SafeArea(
-                top: false,
-                child: Container(
-                  color: Colors.black54,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (controller != null)
-                        VideoProgressIndicator(
-                          controller,
-                          allowScrubbing: true,
-                          colors: const VideoProgressColors(
-                            playedColor: kAccent,
-                            bufferedColor: Colors.white54,
-                            backgroundColor: Colors.white24,
-                          ),
-                        ),
-                      if (controller != null)
-                        _VideoControls(
-                          controller: controller,
-                          playbackSpeed: _playbackSpeed,
-                          speeds: _speeds,
-                          onSpeedChanged: _setSpeed,
-                          scale: _scale,
-                          onResetZoom: _resetZoom,
-                          isFullscreen: _isFullscreen,
-                          onToggleFullscreen: _toggleFullscreen,
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            Positioned(
-              top: 14,
-              right: 14,
-              child: _CloseButton(
-                onTap: () => Navigator.of(context).pop(),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return Scaffold(
-      body: AppBackground(
-        dimmed: true,
-        child: SafeArea(
+        child: ColoredBox(
+          color: Colors.black,
           child: Stack(
+            fit: StackFit.expand,
             children: [
               Center(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Container(
-                    width: double.infinity,
-                    constraints: const BoxConstraints(maxWidth: 620),
-                    color: Colors.black,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.only(top: 18, bottom: 8),
-                          child: Text(
-                            widget.title,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 34,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                        ),
-                        AspectRatio(
-                          aspectRatio: controller?.value.aspectRatio ?? 16 / 9,
-                          child: _buildZoomableVideo(controller),
-                        ),
-                        if (controller != null)
-                          VideoProgressIndicator(
-                            controller,
-                            allowScrubbing: true,
-                            colors: const VideoProgressColors(
-                              playedColor: kAccent,
-                              bufferedColor: Colors.white54,
-                              backgroundColor: Colors.white24,
-                            ),
-                          ),
-                        if (controller != null)
-                          _VideoControls(
-                            controller: controller,
-                            playbackSpeed: _playbackSpeed,
-                            speeds: _speeds,
-                            onSpeedChanged: _setSpeed,
-                            scale: _scale,
-                            onResetZoom: _resetZoom,
-                            isFullscreen: _isFullscreen,
-                            onToggleFullscreen: _toggleFullscreen,
-                          ),
-                      ],
-                    ),
-                  ),
+                child: Transform(
+                  transform: Matrix4.identity()
+                    ..translate(_offset.dx, _offset.dy)
+                    ..scale(_scale),
+                  alignment: Alignment.center,
+                  child: _buildVideoBody(controller),
                 ),
               ),
-              Positioned(
-                top: 14,
-                right: 14,
-                child: _CloseButton(
-                  onTap: () => Navigator.of(context).pop(),
+              if (controller != null && (_controlsVisible || fullscreen))
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: _buildControlsOverlay(controller),
                 ),
-              ),
             ],
           ),
         ),
@@ -310,25 +487,188 @@ class _TutorialVideoScreenState extends State<TutorialVideoScreen> {
   Widget _buildVideoBody(VideoPlayerController? controller) {
     if (_error != null) {
       return Center(
-        child: Text(
-          _error!,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 16,
-            fontWeight: FontWeight.w700,
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Text(
+            _error!,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ),
       );
     }
 
-    if (controller == null) {
-      return const Center(
-        child: CircularProgressIndicator(color: kAccent),
-      );
+    if (_loadingVideo || controller == null) {
+      return const Center(child: CircularProgressIndicator(color: kAccent));
     }
 
     return VideoPlayer(controller);
+  }
+
+  Widget _buildControlsOverlay(VideoPlayerController controller) {
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Colors.transparent, Color(0xCC000000)],
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          VideoProgressIndicator(
+            controller,
+            allowScrubbing: true,
+            colors: const VideoProgressColors(
+              playedColor: kAccent,
+              bufferedColor: Colors.white54,
+              backgroundColor: Colors.white24,
+            ),
+          ),
+          _VideoControls(
+            controller: controller,
+            playbackSpeed: _playbackSpeed,
+            speeds: _speeds,
+            onSpeedChanged: _setSpeed,
+            scale: _scale,
+            onResetZoom: _resetZoom,
+            isFullscreen: _isFullscreen,
+            onToggleFullscreen: _toggleFullscreen,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildViewButtons() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: constraints.maxWidth),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Flexible(
+                child: _ViewButton(
+                  label: 'Left view',
+                  iconAsset: 'assets/images/Left.png',
+                  selected: _activeView == _TutorialView.left,
+                  enabled: _hasLeft,
+                  onTap: () => _playView(_TutorialView.left),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: _ViewButton(
+                  label: 'Front view',
+                  iconAsset: 'assets/images/Front.png',
+                  selected: _activeView == _TutorialView.front,
+                  enabled: _hasDefault || _hasFront,
+                  onTap: () => _playView(_TutorialView.front),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: _ViewButton(
+                  label: 'Right view',
+                  iconAsset: 'assets/images/Right.png',
+                  selected: _activeView == _TutorialView.right,
+                  enabled: _hasRight,
+                  onTap: () => _playView(_TutorialView.right),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _ViewButton extends StatelessWidget {
+  final String label;
+  final String iconAsset;
+  final bool selected;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  const _ViewButton({
+    required this.label,
+    required this.iconAsset,
+    required this.selected,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final activeColor = !enabled
+        ? const Color(0xFF202020)
+        : selected
+            ? const Color(0xFF0D6FDB)
+            : Colors.black;
+    return Opacity(
+      opacity: enabled ? 1 : 0.28,
+      child: Material(
+        color: activeColor,
+        borderRadius: BorderRadius.circular(4),
+        child: InkWell(
+          onTap: enabled ? onTap : null,
+          borderRadius: BorderRadius.circular(4),
+          child: Container(
+            height: 36,
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(
+                color:
+                    enabled ? const Color(0xFF0D6FDB) : const Color(0xFF555555),
+                width: 2,
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 28,
+                  height: 28,
+                  color: Colors.transparent,
+                  child: Image.asset(
+                    iconAsset,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => Icon(
+                      Icons.accessibility_new_rounded,
+                      color: Colors.white,
+                      size: 18,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -354,8 +694,7 @@ class _VideoControls extends StatelessWidget {
   });
 
   Future<void> _showSpeedMenu(BuildContext context) async {
-    final overlay =
-        Overlay.of(context).context.findRenderObject() as RenderBox?;
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox?;
     final button = context.findRenderObject() as RenderBox?;
     if (overlay == null || button == null) return;
 
@@ -393,9 +732,7 @@ class _VideoControls extends StatelessWidget {
       }).toList(),
     );
 
-    if (selected != null) {
-      onSpeedChanged(selected);
-    }
+    if (selected != null) onSpeedChanged(selected);
   }
 
   @override
@@ -403,7 +740,7 @@ class _VideoControls extends StatelessWidget {
     return ValueListenableBuilder<VideoPlayerValue>(
       valueListenable: controller,
       builder: (context, value, _) {
-        final leftControls = <Widget>[
+        final controls = [
           IconButton(
             color: Colors.white,
             onPressed: () {
@@ -418,12 +755,14 @@ class _VideoControls extends StatelessWidget {
           ),
           IconButton(
             color: Colors.white,
-            onPressed: () => controller.seekTo(Duration.zero),
+            onPressed: () {
+              controller
+                ..seekTo(Duration.zero)
+                ..play();
+            },
             icon: const Icon(Icons.replay_rounded),
             tooltip: 'Replay',
           ),
-        ];
-        final rightControls = <Widget>[
           if (scale > 1.0)
             IconButton(
               color: kAccent,
@@ -449,7 +788,6 @@ class _VideoControls extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(width: 4),
           IconButton(
             color: Colors.white,
             onPressed: onToggleFullscreen,
@@ -463,32 +801,10 @@ class _VideoControls extends StatelessWidget {
         ];
 
         return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final controls = [
-                ...leftControls,
-                const SizedBox(width: 12),
-                ...rightControls,
-              ];
-              if (constraints.maxWidth < 380) {
-                return SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: controls,
-                  ),
-                );
-              }
-
-              return Row(
-                children: [
-                  ...leftControls,
-                  const Spacer(),
-                  ...rightControls,
-                ],
-              );
-            },
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(mainAxisSize: MainAxisSize.min, children: controls),
           ),
         );
       },
@@ -496,21 +812,32 @@ class _VideoControls extends StatelessWidget {
   }
 }
 
-class _CloseButton extends StatelessWidget {
+class _HighlightedBackButton extends StatelessWidget {
   final VoidCallback onTap;
 
-  const _CloseButton({required this.onTap});
+  const _HighlightedBackButton({required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: const Color(0xFFFF2F2F),
+      color: const Color(0xFF2ED7E6),
+      elevation: 8,
+      shadowColor: const Color(0x66000000),
+      shape: const CircleBorder(
+        side: BorderSide(color: Colors.white, width: 2),
+      ),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
+        customBorder: const CircleBorder(),
         onTap: onTap,
         child: const SizedBox(
-          width: 34,
-          height: 34,
-          child: Icon(Icons.close_rounded, color: Colors.white, size: 32),
+          width: 56,
+          height: 56,
+          child: Icon(
+            Icons.arrow_back_rounded,
+            color: Colors.white,
+            size: 34,
+          ),
         ),
       ),
     );

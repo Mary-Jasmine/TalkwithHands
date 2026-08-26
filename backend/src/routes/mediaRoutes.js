@@ -32,12 +32,8 @@ function setVideoHeaders(res, contentType, contentLength) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Accept-Ranges', 'bytes');
   res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-  if (contentType) {
-    res.setHeader('Content-Type', contentType);
-  }
-  if (contentLength) {
-    res.setHeader('Content-Length', contentLength);
-  }
+  if (contentType) res.setHeader('Content-Type', contentType);
+  if (contentLength) res.setHeader('Content-Length', contentLength);
 }
 
 async function downloadToCache(fileId, dest) {
@@ -48,7 +44,9 @@ async function downloadToCache(fileId, dest) {
 
   const tmp = `${dest}.partial`;
   const task = (async () => {
-    const response = await fetch(driveDownloadUrl(fileId), { redirect: 'follow' });
+    const response = await fetch(driveDownloadUrl(fileId), {
+      redirect: 'follow',
+    });
     if (!response.ok) {
       throw new Error(`Google Drive download failed (${response.status}).`);
     }
@@ -80,9 +78,13 @@ router.get('/videos/:fileId', async (req, res, next) => {
       return res.sendFile(dest);
     }
 
-    const response = await fetch(driveDownloadUrl(fileId), { redirect: 'follow' });
+    const response = await fetch(driveDownloadUrl(fileId), {
+      redirect: 'follow',
+    });
     if (!response.ok) {
-      return res.status(502).json({ message: 'Could not fetch video from Google Drive.' });
+      return res
+        .status(502)
+        .json({ message: 'Could not fetch video from Google Drive.' });
     }
 
     const contentType = response.headers.get('content-type') || 'video/mp4';
