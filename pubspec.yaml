@@ -41,6 +41,7 @@ dependencies:
   video_player: ^2.10.0
   cached_network_image: ^3.3.1
   audioplayers: ^6.1.0
+  shared_preferences: ^2.5.3
   photo_view: ^0.15.0  
   webview_flutter: ^4.10.0
   image_picker: ^1.1.2
@@ -67,6 +68,7 @@ flutter:
     - assets/images/Front.png
     - assets/images/Right.png
     - assets/guess_me/videos/
+    - lib/games/guesssme1/assets/videos/
     - assets/guess_me/videos/Alphabet/
     - assets/guess_me/videos/Animal/
     - assets/guess_me/videos/Color/
@@ -85,6 +87,12 @@ flutter:
     - assets/js/three.min.js
     - assets/images/hand.png
     - assets/Kumusta.mp4
+    - assets/Alpha.mp4
+    - assets/Progress.mp4
+    - assets/Num.mp4
+    - assets/Basic.mp4
+    - assets/180.mp4
+    - assets/Set.mp4
     - assets/guess_asl/
     - assets/kalinaw/
     - lib/.env

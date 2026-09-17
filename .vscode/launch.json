@@ -8,6 +8,7 @@
       "program": "lib/main.dart",
       "cwd": "${workspaceFolder}",
       "deviceId": "chrome",
+      "flutterMode": "debug",
       "env": {
         "APPDATA": "${workspaceFolder}\\.flutter_appdata",
         "ANDROID_HOME": "C:\\AndroidSdk",
@@ -16,7 +17,7 @@
       }
     },
     {
-      "name": "Talk with Hands (Mobile)",
+      "name": "Talk with Hands (Android device)",
       "request": "launch",
       "type": "dart",
       "program": "lib/main.dart",

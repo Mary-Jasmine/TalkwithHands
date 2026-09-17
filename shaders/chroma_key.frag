@@ -28,12 +28,17 @@ void main() {
   float blueKey = color.b - max(color.r, color.g);
 
   float greenDominance = max(greenKey, color.g - color.r);
-  float greenScreen = smoothstep(-0.04, 0.08, greenDominance) *
-      smoothstep(0.025, 0.11, chroma);
-  float cyanScreen = smoothstep(-0.02, 0.10, cyanKey) *
-      smoothstep(0.025, 0.12, chroma);
-  float blueScreen = smoothstep(0.02, 0.14, blueKey) *
-      smoothstep(0.04, 0.14, chroma);
+    float keyThreshold = clamp(uThreshold, 0.05, 0.8);
+    float keySmoothing = max(uSmoothing, 0.01);
+    float greenScreen = smoothstep(
+      keyThreshold - keySmoothing, keyThreshold + keySmoothing, greenDominance) *
+      smoothstep(0.04, 0.16, chroma);
+    float cyanScreen = smoothstep(
+      keyThreshold - keySmoothing, keyThreshold + keySmoothing, cyanKey) *
+      smoothstep(0.04, 0.17, chroma);
+    float blueScreen = smoothstep(
+      keyThreshold - keySmoothing, keyThreshold + keySmoothing, blueKey) *
+      smoothstep(0.06, 0.18, chroma);
   float keyedBackground = max(max(greenScreen, cyanScreen), blueScreen);
 
   float alpha = 1.0 - keyedBackground;

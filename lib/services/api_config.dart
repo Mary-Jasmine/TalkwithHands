@@ -15,7 +15,7 @@ class ApiConfig {
     final value = baseUrl;
     if (value.isEmpty) {
       throw Exception(
-        'Missing API_BASE_URL. Set it in lib/.env or pass '
+        'Missing API_BASE_URL. Set it in lib/.env or pass'
         '--dart-define=API_BASE_URL=https://your-public-api.example.com',
       );
     }

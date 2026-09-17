@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -17,6 +19,7 @@ class AuthException implements Exception {
 
 class AuthService {
   static const _jwtKey = 'auth_jwt';
+  static const _cachedUserKey = 'auth_cached_user';
   static const _profilePhotoPrefix = 'profile_photo_';
   static const _coverPhotoPrefix = 'cover_photo_';
   static const _storage = FlutterSecureStorage();
@@ -54,6 +57,40 @@ class AuthService {
 
   Future<void> _storeJwt(String token) async {
     await _storage.write(key: _jwtKey, value: token);
+  }
+
+  Future<void> _storeSession(String token, UserProfile profile) async {
+    await _storeJwt(token);
+    await cacheProfile(profile);
+  }
+
+  static Future<bool> hasStoredSession() async {
+    final token = await _storage.read(key: _jwtKey);
+    return token != null && token.isNotEmpty;
+  }
+
+  static Future<void> cacheProfile(UserProfile profile) async {
+    await _storage.write(
+      key: _cachedUserKey,
+      value: jsonEncode(profile.toJson()),
+    );
+  }
+
+  static Future<UserProfile?> cachedProfile() async {
+    final raw = await _storage.read(key: _cachedUserKey);
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final json = jsonDecode(raw);
+      if (json is Map<String, dynamic>) {
+        return UserProfile.fromJson(json);
+      }
+      if (json is Map) {
+        return UserProfile.fromJson(Map<String, dynamic>.from(json));
+      }
+    } catch (_) {
+      return null;
+    }
+    return null;
   }
 
   static Future<void> cacheProfileImages({
@@ -97,6 +134,7 @@ class AuthService {
       // Local cleanup still matters if the network is unavailable.
     }
     await _storage.delete(key: _jwtKey);
+    await _storage.delete(key: _cachedUserKey);
     try {
       await GoogleSignIn().signOut();
     } on PlatformException {
@@ -122,9 +160,10 @@ class AuthService {
 
       final token = (res.data['token'] ?? '').toString();
       if (token.isEmpty) throw AuthException('Missing token in response.');
-      await _storeJwt(token);
+      final profile = UserProfile.fromJson(res.data['user'] as Map<String, dynamic>);
+      await _storeSession(token, profile);
 
-      return UserProfile.fromJson(res.data['user'] as Map<String, dynamic>);
+      return profile;
     } on DioException catch (e) {
       throw AuthException(_dioMessage(e));
     }
@@ -142,9 +181,10 @@ class AuthService {
 
       final token = (res.data['token'] ?? '').toString();
       if (token.isEmpty) throw AuthException('Missing token in response.');
-      await _storeJwt(token);
+      final profile = UserProfile.fromJson(res.data['user'] as Map<String, dynamic>);
+      await _storeSession(token, profile);
 
-      return UserProfile.fromJson(res.data['user'] as Map<String, dynamic>);
+      return profile;
     } on DioException catch (e) {
       throw AuthException(_dioMessage(e));
     }
@@ -176,9 +216,10 @@ class AuthService {
 
       final token = (res.data['token'] ?? '').toString();
       if (token.isEmpty) throw AuthException('Missing token in response.');
-      await _storeJwt(token);
+      final profile = UserProfile.fromJson(res.data['user'] as Map<String, dynamic>);
+      await _storeSession(token, profile);
 
-      return UserProfile.fromJson(res.data['user'] as Map<String, dynamic>);
+      return profile;
     } on PlatformException catch (e) {
       throw AuthException(_providerMessage('Google', e));
     } on DioException catch (e) {
@@ -212,9 +253,10 @@ class AuthService {
 
       final token = (res.data['token'] ?? '').toString();
       if (token.isEmpty) throw AuthException('Missing token in response.');
-      await _storeJwt(token);
+      final profile = UserProfile.fromJson(res.data['user'] as Map<String, dynamic>);
+      await _storeSession(token, profile);
 
-      return UserProfile.fromJson(res.data['user'] as Map<String, dynamic>);
+      return profile;
     } on PlatformException catch (e) {
       throw AuthException(_providerMessage('Facebook', e));
     } on DioException catch (e) {
@@ -248,7 +290,9 @@ class AuthService {
   Future<UserProfile?> me() async {
     try {
       final res = await _dio.get('/auth/me');
-      return UserProfile.fromJson(res.data as Map<String, dynamic>);
+      final profile = UserProfile.fromJson(res.data as Map<String, dynamic>);
+      await cacheProfile(profile);
+      return profile;
     } on DioException {
       return null;
     }

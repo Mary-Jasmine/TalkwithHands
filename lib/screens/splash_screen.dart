@@ -53,21 +53,27 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _goToFirstScreen() async {
+    final hasSessionFuture = AuthService.hasStoredSession();
+    final cachedProfileFuture = AuthService.cachedProfile();
     final meFuture = AuthService().me();
     await Future<void>.delayed(const Duration(milliseconds: 850));
     if (!mounted) return;
 
+    final hasSession = await hasSessionFuture;
+    final cachedProfile = await cachedProfileFuture;
     final me = await meFuture.timeout(
-      const Duration(milliseconds: 1800),
-      onTimeout: () => null,
+      const Duration(seconds: 8),
+      onTimeout: () => cachedProfile,
     );
     if (!mounted) return;
 
+    final profile = me ?? cachedProfile;
+
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
-        builder: (_) => me == null
+        builder: (_) => !hasSession && profile == null
             ? const LandingScreen()
-            : WelcomeScreen(userName: me.username ?? 'Student'),
+            : WelcomeScreen(userName: profile?.username ?? 'Student'),
       ),
     );
   }

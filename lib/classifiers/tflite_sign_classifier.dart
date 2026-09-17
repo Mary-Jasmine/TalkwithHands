@@ -9,6 +9,7 @@ import 'sign_classifier.dart';
 // ── How many frames the LSTM expects (must match train_sign_sequence_model.py)
 const int kSequenceFrames = 30;
 const int _kLandmarks = 21;
+final RegExp _alphabetLabelPattern = RegExp(r'^[A-Z]$');
 
 class TfliteSignClassifier {
   TfliteSignClassifier({
@@ -27,17 +28,22 @@ class TfliteSignClassifier {
 
   // Static (dense) model
   Interpreter? _interpreter;
+  IsolateInterpreter? _isolateInterpreter;
   List<String> _labels = const [];
+  int _outputCount = 0;
 
   // Sequence (LSTM) model
   Interpreter? _seqInterpreter;
+  IsolateInterpreter? _seqIsolateInterpreter;
   List<String> _seqLabels = const [];
+  int _seqOutputCount = 0;
 
   // Rolling frame buffer fed by the camera pipeline
   final List<List<double>> _frameBuffer = [];
 
-  bool get isReady => _interpreter != null && _labels.isNotEmpty;
-  bool get isSequenceReady => _seqInterpreter != null && _seqLabels.isNotEmpty;
+  bool get isReady => _isolateInterpreter != null && _labels.isNotEmpty;
+  bool get isSequenceReady =>
+      _seqIsolateInterpreter != null && _seqLabels.isNotEmpty;
 
   // ── Load ──────────────────────────────────────────────────────────────────
 
@@ -58,9 +64,22 @@ class TfliteSignClassifier {
       _interpreter =
           await Interpreter.fromAsset(modelAssetPath, options: options);
       _interpreter!.allocateTensors();
+      final outputShape = _interpreter!.getOutputTensor(0).shape;
+      _outputCount =
+          outputShape.isNotEmpty ? outputShape.last : _labels.length;
+      // PERF FIX: run this interpreter on its own isolate so per-frame
+      // inference never blocks the main/UI isolate (that blocking was the
+      // actual cause of the tracked-hand "lagging behind" — .run() on a
+      // plain Interpreter is a synchronous FFI call on whichever isolate
+      // calls it).
+      _isolateInterpreter =
+          await IsolateInterpreter.create(address: _interpreter!.address);
       debugPrint('TFLite static model loaded (${_labels.length} labels)');
     } catch (e) {
       _labels = const [];
+      _outputCount = 0;
+      _isolateInterpreter?.close();
+      _isolateInterpreter = null;
       _interpreter?.close();
       _interpreter = null;
       debugPrint('TFLite static model disabled: $e');
@@ -79,9 +98,20 @@ class TfliteSignClassifier {
       _seqInterpreter =
           await Interpreter.fromAsset(sequenceModelAssetPath, options: options);
       _seqInterpreter!.allocateTensors();
+      final outputShape = _seqInterpreter!.getOutputTensor(0).shape;
+      _seqOutputCount =
+          outputShape.isNotEmpty ? outputShape.last : _seqLabels.length;
+      // Same fix as the static model — this one matters even more since the
+      // LSTM run is heavier and was causing a bigger stutter every ~30 frames.
+      _seqIsolateInterpreter = await IsolateInterpreter.create(
+        address: _seqInterpreter!.address,
+      );
       debugPrint('TFLite sequence model loaded (${_seqLabels.length} labels)');
     } catch (e) {
       _seqLabels = const [];
+      _seqOutputCount = 0;
+      _seqIsolateInterpreter?.close();
+      _seqIsolateInterpreter = null;
       _seqInterpreter?.close();
       _seqInterpreter = null;
       debugPrint('TFLite sequence model disabled (not trained yet): $e');
@@ -90,39 +120,39 @@ class TfliteSignClassifier {
 
   // ── Static classification ─────────────────────────────────────────────────
 
-  SignResult? classifyAlphabet(List<HandLandmark> landmarks) =>
-      _classify(landmarks, (l) => RegExp(r'^[A-Z]$').hasMatch(l), 'alphabet');
+  Future<SignResult?> classifyAlphabet(List<HandLandmark> landmarks) =>
+      _classify(landmarks, _alphabetLabelPattern.hasMatch, 'alphabet');
 
-  SignResult? classifyNumber(List<HandLandmark> landmarks) =>
+  Future<SignResult?> classifyNumber(List<HandLandmark> landmarks) =>
       _classify(landmarks, (l) => int.tryParse(l) != null, 'number');
 
-  SignResult? classifyWordsFromHands(List<List<HandLandmark>>? hands) {
+  Future<SignResult?> classifyWordsFromHands(
+    List<List<HandLandmark>>? hands,
+  ) async {
     if (hands == null || hands.isEmpty) return null;
     return _classify(
       hands.first,
-      (l) => !RegExp(r'^[A-Z]$').hasMatch(l) && int.tryParse(l) == null,
+      (l) => !_alphabetLabelPattern.hasMatch(l) && int.tryParse(l) == null,
       'word',
     );
   }
 
-  SignResult? _classify(
+  Future<SignResult?> _classify(
     List<HandLandmark> landmarks,
     bool Function(String) acceptsLabel,
     String type,
-  ) {
-    final interpreter = _interpreter;
-    if (interpreter == null || _labels.isEmpty || landmarks.length < 21) {
+  ) async {
+    final isolateInterpreter = _isolateInterpreter;
+    if (isolateInterpreter == null || _labels.isEmpty || landmarks.length < 21) {
       return null;
     }
 
     final input = [_normalizeLandmarks(landmarks)];
-    final outputShape = interpreter.getOutputTensor(0).shape;
-    final outputCount =
-        outputShape.isNotEmpty ? outputShape.last : _labels.length;
+    final outputCount = _outputCount == 0 ? _labels.length : _outputCount;
     final output = [List<double>.filled(outputCount, 0)];
 
     try {
-      interpreter.run(input, output);
+      await isolateInterpreter.run(input, output);
     } catch (e) {
       debugPrint('TFLite static inference failed: $e');
       return null;
@@ -153,7 +183,10 @@ class TfliteSignClassifier {
   /// Call this every frame from the camera pipeline (same cadence as static).
   /// Returns a [SignResult] once the buffer is full and a confident match is found,
   /// otherwise returns null.
-  SignResult? pushFrameAndClassify(List<HandLandmark> landmarks) {
+  Future<SignResult?> pushFrameAndClassify(
+    List<HandLandmark> landmarks, {
+    bool runModel = true,
+  }) async {
     if (!isSequenceReady) return null;
 
     // Append normalized frame to rolling buffer
@@ -161,7 +194,7 @@ class TfliteSignClassifier {
     if (_frameBuffer.length > kSequenceFrames) {
       _frameBuffer.removeAt(0);
     }
-    if (_frameBuffer.length < kSequenceFrames) return null;
+    if (!runModel || _frameBuffer.length < kSequenceFrames) return null;
 
     return _classifySequence();
   }
@@ -169,20 +202,19 @@ class TfliteSignClassifier {
   /// Resets the frame buffer (e.g. when switching modes or on confirmed sign).
   void resetSequenceBuffer() => _frameBuffer.clear();
 
-  SignResult? _classifySequence() {
-    final interpreter = _seqInterpreter;
-    if (interpreter == null || _seqLabels.isEmpty) return null;
+  Future<SignResult?> _classifySequence() async {
+    final isolateInterpreter = _seqIsolateInterpreter;
+    if (isolateInterpreter == null || _seqLabels.isEmpty) return null;
 
     // Input shape: [1, kSequenceFrames, _kFeatures]
     final input = [_frameBuffer.map((f) => f).toList()];
 
-    final outputShape = interpreter.getOutputTensor(0).shape;
     final outputCount =
-        outputShape.isNotEmpty ? outputShape.last : _seqLabels.length;
+        _seqOutputCount == 0 ? _seqLabels.length : _seqOutputCount;
     final output = [List<double>.filled(outputCount, 0)];
 
     try {
-      interpreter.run(input, output);
+      await isolateInterpreter.run(input, output);
     } catch (e) {
       debugPrint('TFLite sequence inference failed: $e');
       return null;
@@ -230,9 +262,15 @@ class TfliteSignClassifier {
   }
 
   void close() {
+    _isolateInterpreter?.close();
+    _isolateInterpreter = null;
     _interpreter?.close();
     _interpreter = null;
+    _outputCount = 0;
+    _seqIsolateInterpreter?.close();
+    _seqIsolateInterpreter = null;
     _seqInterpreter?.close();
     _seqInterpreter = null;
+    _seqOutputCount = 0;
   }
 }

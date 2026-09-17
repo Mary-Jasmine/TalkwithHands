@@ -61,6 +61,9 @@ class _BackgroundMusicRegionState extends State<BackgroundMusicRegion>
   void didPush() => _activate();
 
   @override
+  void didPushNext() => unawaited(BackgroundMusicService.instance.pause());
+
+  @override
   void didPopNext() => _activate();
 
   void _activate() {
@@ -84,9 +87,14 @@ class _BackgroundMusicRegionState extends State<BackgroundMusicRegion>
   }
 }
 
-class MusicToggleButton extends StatelessWidget {
+class MusicToggleButton extends StatefulWidget {
   const MusicToggleButton({super.key});
 
+  @override
+  State<MusicToggleButton> createState() => _MusicToggleButtonState();
+}
+
+class _MusicToggleButtonState extends State<MusicToggleButton> {
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -95,7 +103,7 @@ class MusicToggleButton extends StatelessWidget {
         final service = BackgroundMusicService.instance;
         return Semantics(
           button: true,
-          label: service.muted ? 'Unmute music' : 'Mute music',
+          label: service.muted ? 'Play music' : 'Mute music',
           child: Material(
             color: Colors.white.withValues(alpha: 0.88),
             shape: const CircleBorder(),

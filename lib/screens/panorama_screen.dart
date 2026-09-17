@@ -1,5 +1,5 @@
-import 'dart:convert';
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -14,6 +14,7 @@ import '../services/panorama_service.dart';
 import '../services/video_player_service.dart';
 import '../ui/app_shell.dart';
 import '../utils/url_helper.dart';
+import '../widgets/transparent_sign_video_overlay.dart';
 
 class PanoramaScreen extends StatefulWidget {
   final String userName;
@@ -26,7 +27,7 @@ class PanoramaScreen extends StatefulWidget {
 class _PanoramaScreenState extends State<PanoramaScreen> {
   // ── Cross-instance cache ─────────────────────────────────────────────
   // Navigator.push creates a BRAND NEW PanoramaScreen (and thus a brand
-  // new State) every time the user opens "360 Pictures" from the menu,
+  // new State) every time the user opens "180 Pictures" from the menu,
   // even if they were just here before. These `static` fields live on
   // the class, not the State instance, so they survive that recreation:
   // the scene list, the three.min.js source, and the fully-built panorama
@@ -35,6 +36,8 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
   static List<PanoramaScene>? _cachedScenes;
   static String? _cachedThreeJsSource;
   static String? _cachedFullHtml;
+
+  bool _disposed = false;
 
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   late final WebViewController _webViewController;
@@ -48,7 +51,8 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
   // ── Single-load panorama state ──────────────────────────────────────────
   // All scenes are baked into one big HTML page (loaded once). Switching
   // scenes afterwards is just a JS call (window.switchScene), not a full
-  // WebView reload, so textures stay cached in memory between switches.
+  // WebView reload. The WebView itself is only loaded after a user picks a
+  // scene, so opening the 180 page does not allocate the 3D viewer up front.
   bool _fullHtmlRequested = false;
   bool _fullHtmlReady = false;
   bool _isFullHtmlLoad = false;
@@ -73,27 +77,30 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageFinished: (_) {
-            if (!_isFullHtmlLoad) return;
+            if (_disposed || !_isFullHtmlLoad) return;
             _fullHtmlReady = true;
             if (_pendingSwitchIndex != -1) {
               final idx = _pendingSwitchIndex;
               _pendingSwitchIndex = -1;
-              _webViewController.runJavaScript('window.switchScene($idx);');
+              if (!_disposed) {
+                try {
+                  _webViewController.runJavaScript('window.switchScene($idx);');
+                } catch (_) {}
+              }
             }
           },
         ),
       )
-      ..loadHtmlString(_buildEmptyHtml('Loading 360 pictures...'));
+      ..loadHtmlString(_buildEmptyHtml('Loading 180 pictures...'));
 
     _threeJsFuture = _loadThreeJs();
 
     if (_cachedScenes != null) {
       // Already fetched during an earlier visit this session — resolve
-      // instantly (no spinner) and kick off loading the (also cached)
-      // full panorama page right away.
+      // instantly (no spinner). The full panorama page still waits until
+      // the user taps View so the grid opens quickly on smaller devices.
       _scenes = _cachedScenes!;
       _sceneFuture = Future.value(_cachedScenes!);
-      unawaited(_loadFullPanoramaHtml());
     } else {
       _sceneFuture = PanoramaService().listPanoramaScenes();
     }
@@ -124,7 +131,7 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
   }
 
   Future<void> _loadPanorama(int index) async {
-    if (index < 0 || index >= _scenes.length) return;
+    if (_disposed || index < 0 || index >= _scenes.length) return;
     if (!mounted) return;
     setState(() {
       _selectedIndex = index;
@@ -135,8 +142,10 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
     // or already loaded before we try to switch to it.
     unawaited(_loadFullPanoramaHtml());
 
-    if (_fullHtmlReady) {
-      _webViewController.runJavaScript('window.switchScene($index);');
+    if (_fullHtmlReady && !_disposed) {
+      try {
+        _webViewController.runJavaScript('window.switchScene($index);');
+      } catch (_) {}
     } else {
       // Page isn't finished loading yet — onPageFinished will pick this up
       // and switch to it as soon as window.switchScene exists.
@@ -144,27 +153,32 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
     }
   }
 
-  // Loads the single HTML page containing every scene, once. Subsequent
+  // Loads the single HTML page containing every scene, on demand. Subsequent
   // scene changes are handled entirely in JS via window.switchScene(index),
   // so the WebView is never reloaded again.
   Future<void> _loadFullPanoramaHtml() async {
-    if (_fullHtmlRequested) return;
+    if (_disposed || _fullHtmlRequested) return;
     _fullHtmlRequested = true;
 
     if (_cachedFullHtml != null) {
       // Built during an earlier visit this session — reuse as-is, no need
       // to wait for three.js or rebuild/re-encode the scenes JSON again.
       _isFullHtmlLoad = true;
-      await _webViewController.loadHtmlString(_cachedFullHtml!);
+      if (_disposed) return;
+      try {
+        await _webViewController.loadHtmlString(_cachedFullHtml!);
+      } catch (_) {}
       return;
     }
 
     await (_threeJsFuture ??= _loadThreeJs());
-    if (!mounted) return;
+    if (!mounted || _disposed) return;
     _isFullHtmlLoad = true;
     final html = _buildFullHtml(_scenes);
     _cachedFullHtml = html;
-    await _webViewController.loadHtmlString(html);
+    try {
+      await _webViewController.loadHtmlString(html);
+    } catch (_) {}
   }
 
   void _onHotspotMessage(JavaScriptMessage message) {
@@ -294,9 +308,15 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
   camera.position.set(0, 0, 0.1);
-  const renderer = new THREE.WebGLRenderer({antialias: true});
+  let renderer;
+  try {
+    renderer = new THREE.WebGLRenderer({antialias: false, powerPreference: 'low-power'});
+  } catch (error) {
+    document.body.innerHTML = '<p style="color:white;text-align:center;padding:24px;font-family:Arial">This device cannot display 180 pictures.</p>';
+    throw error;
+  }
   renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
   document.body.appendChild(renderer.domElement);
 
   const geometry = new THREE.SphereGeometry(500, 60, 40);
@@ -305,14 +325,16 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
   const sphere = new THREE.Mesh(geometry, material);
   scene.add(sphere);
 
-  // ── Texture cache: each scene's image is fetched once, then kept in
-  // memory so re-visiting a scene is instant. ──────────────────────────
   const loader = new THREE.TextureLoader();
-  const textures = new Array(scenesData.length).fill(null);
+  let activeTexture = null;
   function loadTexture(i) {
     return new Promise(resolve => {
-      if (textures[i]) { resolve(textures[i]); return; }
-      loader.load(scenesData[i].imageUrl, tex => { textures[i] = tex; resolve(tex); });
+      loader.load(
+        scenesData[i].imageUrl,
+        tex => resolve(tex),
+        undefined,
+        () => resolve(null),
+      );
     });
   }
 
@@ -355,6 +377,14 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
     currentIndex = i;
     lon = 0; lat = 0; autoRotate = true;
     const tex = await loadTexture(i);
+    if (!tex) {
+      hotspotRoot.innerHTML = '<p style="color:white;text-align:center;padding:24px;font-family:Arial">Picture unavailable.</p>';
+      return;
+    }
+    if (activeTexture && activeTexture !== tex) {
+      activeTexture.dispose();
+    }
+    activeTexture = tex;
     material.map = tex;
     material.needsUpdate = true;
     renderHotspots(scenesData[i].hotspots);
@@ -447,12 +477,9 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
   }
   animate();
 
-  // Show the requested scene first, then quietly preload the rest in the
-  // background so switching later is instant.
+  // Load only the requested scene. Keeping every panorama texture in memory
+  // at once can terminate the Android WebView on lower-memory devices.
   switchScene($initialIndex).then(() => {
-    for (let i = 0; i < scenesData.length; i++) {
-      if (i !== $initialIndex) loadTexture(i);
-    }
   });
 </script>
 </body>
@@ -494,8 +521,17 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
       _cachedFullHtml = null;
       _sceneFuture = PanoramaService().listPanoramaScenes();
       _webViewController
-          .loadHtmlString(_buildEmptyHtml('Loading 360 pictures...'));
+          .loadHtmlString(_buildEmptyHtml('Loading 180 pictures...'));
     });
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    try {
+      unawaited(_webViewController.loadHtmlString(_buildEmptyHtml('')));
+    } catch (_) {}
+    super.dispose();
   }
 
   @override
@@ -505,7 +541,7 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
       endDrawer: AppMenuDrawer(
         userName: widget.userName,
         onClose: () => Navigator.of(context).pop(),
-        activeScreen: '360 Pictures',
+        activeScreen: '180 Pictures',
       ),
       body: AppBackground(
         child: Stack(
@@ -533,7 +569,7 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
                 child: Text(
                   _viewerMode && _scenes.isNotEmpty
                       ? _scenes[_selectedIndex].title.toUpperCase()
-                      : '360 PICTURES',
+                      : '180 PICTURES',
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     color: Color(0xFF1500C8),
@@ -542,6 +578,18 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
                   ),
                 ),
               ),
+              if (!_viewerMode)
+                const SizedBox(
+                  height: 120,
+                  width: 240,
+                  child: TransparentSignVideoOverlay(
+                    videoAsset: 'assets/180.mp4',
+                    fit: BoxFit.contain,
+                    volume: 0,
+                    threshold: 0.34,
+                    smoothing: 0.08,
+                  ),
+                ),
               Expanded(
                 child: FutureBuilder<List<PanoramaScene>>(
                   future: _sceneFuture,
@@ -555,7 +603,7 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
                     if (snapshot.hasError) {
                       return _ErrorState(
                         message:
-                            'Cannot load 360 pictures. Make sure the backend is running.',
+                            'Cannot load 180 pictures. Make sure the backend is running.',
                         onRetry: _reload,
                       );
                     }
@@ -563,7 +611,7 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
                     final scenes = snapshot.data ?? const [];
                     if (scenes.isEmpty) {
                       return _ErrorState(
-                        message: 'No 360 pictures found.',
+                        message: 'No 180 pictures found.',
                         onRetry: _reload,
                       );
                     }
@@ -571,7 +619,6 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
                     if (_scenes.isEmpty) {
                       _scenes = scenes;
                       _cachedScenes = scenes;
-                      unawaited(_loadFullPanoramaHtml());
                     }
 
                     if (!_viewerMode) {
@@ -625,7 +672,7 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
     );
   }
 
-  // ── Words / hotspot list below the 360 viewer ───────────────────────────
+  // ── Words / hotspot list below the 180 viewer ───────────────────────────
   Widget _buildWordsList(List<PanoramaHotspot> hotspots) {
     if (hotspots.isEmpty) return const SizedBox.shrink();
 
@@ -706,7 +753,7 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
     );
   }
 
-  // ── 360 viewer with thumbnail strip ─────────────────────────────────────
+  // ── 180 viewer with thumbnail strip ─────────────────────────────────────
   Widget _buildViewer() {
     final currentHotspots = _scenes.isNotEmpty ? _scenes[_selectedIndex].hotspots : <PanoramaHotspot>[];
 

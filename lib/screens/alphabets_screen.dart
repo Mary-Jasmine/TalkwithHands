@@ -11,6 +11,7 @@ import '../ui/background_music_region.dart';
 import '../ui/app_shell.dart';
 import '../utils/url_helper.dart';
 import '../utils/video_url_utils.dart';
+import '../widgets/transparent_sign_video_overlay.dart';
 import 'sign_detector_screen.dart';
 import 'tutorial_video_screen.dart';
 
@@ -193,135 +194,110 @@ class _AlphabetsScreenState extends State<AlphabetsScreen> {
                 ),
               ),
 
-              // ── Search + Practice row ────────────────────────────────────
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Row(
+              Expanded(
+                child: Stack(
+                  fit: StackFit.expand,
                   children: [
-                    Expanded(
-                        child: _SearchField(controller: _searchController)),
-                    const SizedBox(width: 12),
-                    _PracticeButton(
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const SignDetectorScreen(
-                            initialMode: DetectionMode.az,
-                            lockMode: true,
-                            captureKind: CaptureKind.image,
-                            title: 'Alphabet Practice',
+                    Column(
+                      children: [
+                        // ── Search + Practice row ──────────────────────────
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 24),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: _SearchField(
+                                  controller: _searchController,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              _PracticeButton(
+                                onTap: () => Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => const SignDetectorScreen(
+                                      initialMode: DetectionMode.az,
+                                      lockMode: true,
+                                      captureKind: CaptureKind.image,
+                                      title: 'Alphabet Practice',
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      ),
+                        const SizedBox(height: 10),
+
+                        // ── Character illustration banner ──────────────────
+                        SizedBox(
+                          height: 150,
+                          width: double.infinity,
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              const TransparentSignVideoOverlay(
+                                videoAsset: 'assets/Alpha.mp4',
+                                fit: BoxFit.contain,
+                                volume: 0,
+                                threshold: 0.34,
+                                smoothing: 0.08,
+                              ),
+                              const Positioned(
+                                left: 24,
+                                top: 8,
+                                child: _AlphabetBadge(letter: 'A', color: Color(0xFF8B3FBE)),
+                              ),
+                              const Positioned(
+                                left: 62,
+                                bottom: 8,
+                                child: _AlphabetBadge(letter: 'B', color: Color(0xFFE0317A)),
+                              ),
+                              const Positioned(
+                                right: 62,
+                                top: 8,
+                                child: _AlphabetBadge(letter: 'C', color: Color(0xFFF0B000)),
+                              ),
+                              const Positioned(
+                                right: 18,
+                                bottom: 8,
+                                child: _AlphabetBadge(letter: 'D', color: Color(0xFF2196F3)),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+
+                        // ── Grid container (rounded card panel) ────────────
+                        Expanded(
+                          child: Container(
+                            margin: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+                            decoration: BoxDecoration(
+                              color: const Color.fromARGB(255, 4, 51, 98)
+                                  .withValues(alpha: 0.18),
+                              borderRadius: BorderRadius.circular(24),
+                              border: Border.all(
+                                color: const Color.fromARGB(255, 156, 156, 156)
+                                    .withValues(alpha: 0.55),
+                                width: 1.5,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color.fromARGB(255, 186, 182, 182)
+                                      .withValues(alpha: 0.08),
+                                  blurRadius: 18,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(24),
+                              child: _buildGrid(),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
-                ),
-              ),
-
-              const SizedBox(height: 10),
-
-              // ── Character illustration banner ────────────────────────────
-              SizedBox(
-                height: 130,
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  alignment: Alignment.center,
-                  children: [
-                    // decorative letter stickers
-                  const  Positioned(
-                      left: 15,
-                      top: 8,
-                      child: _StickerLetter(
-                        letter: 'A',
-                        color: Color.fromARGB(185, 139, 63, 190),
-                        angle: -0.02,
-                        size: 31,
-                        delay: Duration.zero,
-                      ),
-                    ),
-                    const Positioned(
-                      left: 52,
-                      bottom: 12,
-                      child: _StickerLetter(
-                        letter: 'B',
-                        color: Color.fromARGB(190, 224, 49, 122),
-                        angle: 0.12,
-                        size: 32,
-                        delay: Duration(milliseconds: 300),
-                      ),
-                    ),
-                    const Positioned(
-                      right: 52,
-                      top: 10,
-                      child: _StickerLetter(
-                        letter: 'C',
-                        color: Color.fromARGB(192, 240, 176, 0),
-                        angle: 0.15,
-                        size: 30,
-                        delay: Duration(milliseconds: 600),
-                      ),
-                    ),
-                    const Positioned(
-                      right: 10,
-                      bottom: 14,
-                      child: _StickerLetter(
-                        letter: 'D',
-                        color: Color.fromARGB(192, 33, 149, 243),
-                        angle: -0.10,
-                        size: 34,
-                        delay: Duration(milliseconds: 900),
-                      ),
-                    ),
-                    const Positioned(
-                      left: 38,
-                      top: 6,
-                      child: _FloatingEmoji(emoji: '✨', size: 16),
-                    ),
-                    const Positioned(
-                      right: 38,
-                      bottom: 8,
-                      child: _FloatingEmoji(emoji: '💫', size: 14),
-                    ),
-                    // main characters (placeholder — swap with your asset)
-                    Center(
-                      child: Image.asset(
-                        'assets/images/characters.png',
-                        height: 130,
-                        fit: BoxFit.contain,
-                        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 6),
-
-              // ── Grid container (rounded card panel) ──────────────────────
-              Expanded(
-                child: Container(
-                  margin: const EdgeInsets.fromLTRB(10, 0, 10, 10),
-                  decoration: BoxDecoration(
-                    color: const Color.fromARGB(255, 4, 51, 98)
-                        .withValues(alpha: 0.18),
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(
-                      color: const Color.fromARGB(255, 156, 156, 156)
-                          .withValues(alpha: 0.55),
-                      width: 1.5,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color.fromARGB(255, 186, 182, 182)
-                            .withValues(alpha: 0.08),
-                        blurRadius: 18,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(24),
-                    child: _buildGrid(),
-                  ),
                 ),
               ),
             ],
@@ -470,109 +446,25 @@ class _AlphabetsScreenState extends State<AlphabetsScreen> {
   }
 }
 
-// ── Sticker letter ────────────────────────────────────────────────────────────
-class _StickerLetter extends StatefulWidget {
+class _AlphabetBadge extends StatelessWidget {
   final String letter;
   final Color color;
-  final double angle;
-  final double size;
-  final Duration delay;
 
-  const _StickerLetter({
-    required this.letter,
-    required this.color,
-    required this.angle,
-    required this.size,
-    this.delay = Duration.zero,
-  });
-
-  @override
-  State<_StickerLetter> createState() => _StickerLetterState();
-}
-
-class _StickerLetterState extends State<_StickerLetter>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl;
-  late final Animation<double> _bob;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 5000),
-    );
-    _bob = Tween<double>(begin: 0, end: -10).animate(
-      CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
-    );
-    Future.delayed(widget.delay, () {
-      if (mounted) _ctrl.repeat(reverse: true);
-    });
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
+  const _AlphabetBadge({required this.letter, required this.color});
 
   @override
   Widget build(BuildContext context) {
-    final textStyle = TextStyle(
-      fontSize: widget.size,
-      fontWeight: FontWeight.w900,
-      color: widget.color,
-    );
-
-    return AnimatedBuilder(
-      animation: _bob,
-      builder: (_, __) => Transform.translate(
-        offset: Offset(0, _bob.value),
-        child: Transform.rotate(
-          angle: widget.angle,
-          child: Stack(
-            children: [
-              // white glow shadow
-              Text(
-                widget.letter,
-                style: textStyle.copyWith(
-                  foreground: Paint()
-                    ..color = Colors.white.withValues(alpha: 0.8)
-                    ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
-                ),
-              ),
-              // coloured drop shadow
-              Transform.translate(
-                offset: const Offset(3, 3),
-                child: Text(
-                  widget.letter,
-                  style: textStyle.copyWith(
-                    foreground: Paint()
-                      ..color = widget.color.withValues(alpha: 0.4)
-                      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
-                  ),
-                ),
-              ),
-              // actual letter on top
-              Text(widget.letter, style: textStyle),
-            ],
-          ),
-        ),
+    return Text(
+      letter,
+      style: TextStyle(
+        color: color,
+        fontSize: 30,
+        fontWeight: FontWeight.w900,
+        shadows: const [
+          Shadow(color: Colors.white, blurRadius: 4, offset: Offset(2, 2)),
+        ],
       ),
     );
-  }
-}
-
-// ── Floating emoji / decoration ───────────────────────────────────────────────
-class _FloatingEmoji extends StatelessWidget {
-  final String emoji;
-  final double size;
-
-  const _FloatingEmoji({required this.emoji, required this.size});
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(emoji, style: TextStyle(fontSize: size));
   }
 }
 

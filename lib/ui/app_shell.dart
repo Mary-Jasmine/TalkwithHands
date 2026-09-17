@@ -583,7 +583,7 @@ class _AppMenuDrawerState extends State<AppMenuDrawer> {
                   ),
                   _MenuTile(
                     icon: Icons.threesixty_rounded,
-                    title: '360 Pictures',
+                    title: '180 Pictures',
                     active: widget.activeScreen == '360 Pictures',
                     onTap: () {
                       Navigator.of(context).pop();

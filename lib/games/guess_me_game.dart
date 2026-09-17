@@ -61,71 +61,6 @@ class Question {
 // ─────────────────────────────────────────────────────────────
 //  QUESTION DATA
 // ─────────────────────────────────────────────────────────────
-const _availableQuestionVideoAssets = {
-  'assets/guess_me/videos/churchh.mp4',
-  'assets/guess_me/videos/FRUITT.mp4',
-  'assets/guess_me/videos/GARDENN.mp4',
-  'assets/guess_me/videos/i_love_you_1.mp4',
-  'assets/guess_me/videos/ICE CREAMM.mp4',
-  'assets/guess_me/videos/markett.mp4',
-  'assets/guess_me/videos/ty.mp4',
-  'assets/guess_me/videos/Alphabet/A.mp4',
-  'assets/guess_me/videos/Alphabet/C.mp4',
-  'assets/guess_me/videos/Alphabet/E.mp4',
-  'assets/guess_me/videos/Alphabet/G.mp4',
-  'assets/guess_me/videos/Alphabet/H.mp4',
-  'assets/guess_me/videos/Alphabet/I.mp4',
-  'assets/guess_me/videos/Alphabet/J.mp4',
-  'assets/guess_me/videos/Alphabet/L.mp4',
-  'assets/guess_me/videos/Alphabet/N.mp4',
-  'assets/guess_me/videos/Alphabet/P.mp4',
-  'assets/guess_me/videos/Alphabet/V.mp4',
-  'assets/guess_me/videos/Alphabet/W.mp4',
-  'assets/guess_me/videos/Alphabet/Z.mp4',
-  'assets/guess_me/videos/Animal/bird.mp4',
-  'assets/guess_me/videos/Animal/dog.mp4',
-  'assets/guess_me/videos/Animal/fish.mp4',
-  'assets/guess_me/videos/Animal/horse.mp4',
-  'assets/guess_me/videos/Animal/monkey.mp4',
-  'assets/guess_me/videos/Animal/pig.mp4',
-  'assets/guess_me/videos/Color/black.mp4',
-  'assets/guess_me/videos/Color/blue.mp4',
-  'assets/guess_me/videos/Color/brown.mp4',
-  'assets/guess_me/videos/Color/green.mp4',
-  'assets/guess_me/videos/Color/orange.mp4',
-  'assets/guess_me/videos/Color/yellow.mp4',
-  'assets/guess_me/videos/Direction and Location/back.mp4',
-  'assets/guess_me/videos/Direction and Location/down.mp4',
-  'assets/guess_me/videos/Direction and Location/Front.mp4',
-  'assets/guess_me/videos/Direction and Location/Left.mp4',
-  'assets/guess_me/videos/Direction and Location/Near.mp4',
-  'assets/guess_me/videos/Direction and Location/Right.mp4',
-  'assets/guess_me/videos/Direction and Location/Up.mp4',
-  'assets/guess_me/videos/Emotion/Angry.mp4',
-  'assets/guess_me/videos/Emotion/Confuse.mp4',
-  'assets/guess_me/videos/Emotion/Crazy.mp4',
-  'assets/guess_me/videos/Emotion/Happy.mp4',
-  'assets/guess_me/videos/Emotion/Hate.mp4',
-  'assets/guess_me/videos/Emotion/Scared.mp4',
-  'assets/guess_me/videos/Environment/Beach.mp4',
-  'assets/guess_me/videos/Environment/Garden.mp4',
-  'assets/guess_me/videos/Environment/House.mp4',
-  'assets/guess_me/videos/Environment/Market.mp4',
-  'assets/guess_me/videos/Environment/Road.mp4',
-  'assets/guess_me/videos/Family/auntie.mp4',
-  'assets/guess_me/videos/Family/baby.mp4',
-  'assets/guess_me/videos/Family/brother.mp4',
-  'assets/guess_me/videos/Family/cousin.mp4',
-  'assets/guess_me/videos/Family/daughter.mp4',
-  'assets/guess_me/videos/Family/grandmother.mp4',
-  'assets/guess_me/videos/Family/Husband.mp4',
-  'assets/guess_me/videos/Family/nephew.mp4',
-  'assets/guess_me/videos/Family/ninang.mp4',
-  'assets/guess_me/videos/Family/sister.mp4',
-  'assets/guess_me/videos/Family/son.mp4',
-  'assets/guess_me/videos/Family/wife.mp4',
-};
-
 List<Question> buildQuestionList() {
   final questions = [
       Question(
@@ -784,11 +719,7 @@ List<Question> buildQuestionList() {
       ),
     ];
 
-  final playableQuestions = questions
-      .where((question) => _availableQuestionVideoAssets.contains(question.prompt))
-      .toList();
-
-  return playableQuestions.isEmpty ? questions : playableQuestions;
+  return questions;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1324,35 +1255,61 @@ class _QuestionVideoPlayerState extends State<_QuestionVideoPlayer> {
   Duration _previousPosition = Duration.zero;
   Timer? _badgeTimer;
 
-  String? get _assetPath => widget.prompt.startsWith('assets/guess_me/videos/') ? widget.prompt : null;
-  String? get _webVideoUrl {
-    final assetPath = _assetPath;
-    if (assetPath == null || !kIsWeb) return null;
-    return '/assets/${Uri.encodeFull(assetPath)}';
+  List<String> get _assetCandidates {
+    if (!widget.prompt.startsWith('assets/guess_me/videos/')) return const [];
+
+    final fileName = widget.prompt.split('/').last;
+    final legacyRoot = 'lib/games/guesssme1/assets/videos';
+    final candidates = <String>[
+      widget.prompt,
+      '$legacyRoot/$fileName',
+      '$legacyRoot/${fileName.toLowerCase()}',
+      '$legacyRoot/${fileName.toUpperCase()}',
+    ];
+    return candidates.toSet().toList();
   }
-  bool get _hasVideoAsset => _assetPath != null;
+
+  bool get _hasVideoAsset => _assetCandidates.isNotEmpty;
 
   @override
   void initState() {
     super.initState();
     if (_hasVideoAsset) {
-      _initializeController();
+      _initializeFuture = _initializeController();
     }
   }
 
-  void _initializeController() {
-    _controller = kIsWeb && _webVideoUrl != null
-        ? VideoPlayerController.networkUrl(Uri.parse(_webVideoUrl!))
-        : VideoPlayerController.asset(_assetPath!);
-    _initializeFuture = _controller!.initialize().then((_) {
-      if (!mounted) return;
-      _controller!
-        ..setLooping(true)
-        ..setVolume(0)
-        ..play();
-      _controller!.addListener(_handleLoopDetection);
-      setState(() {});
-    });
+  Future<void> _initializeController() async {
+    VideoPlayerController? loadedController;
+    Object? lastError;
+
+    for (final assetPath in _assetCandidates) {
+      final controller = kIsWeb
+          ? VideoPlayerController.networkUrl(
+              Uri.parse('/assets/${Uri.encodeFull(assetPath)}'),
+            )
+          : VideoPlayerController.asset(assetPath);
+      try {
+        await controller.initialize();
+        loadedController = controller;
+        break;
+      } catch (error) {
+        lastError = error;
+        await controller.dispose();
+      }
+    }
+
+    if (loadedController == null) {
+      throw lastError ?? StateError('No video asset could be loaded.');
+    }
+
+    _controller = loadedController;
+    await _controller!.setLooping(true);
+    await _controller!.setVolume(0);
+    await _controller!.play();
+    if (!mounted) return;
+    _controller!.addListener(_handleLoopDetection);
+    setState(() {});
   }
 
   void _handleLoopDetection() {
@@ -1384,7 +1341,7 @@ class _QuestionVideoPlayerState extends State<_QuestionVideoPlayer> {
       _controller = null;
       _initializeFuture = null;
       if (_hasVideoAsset) {
-        _initializeController();
+        _initializeFuture = _initializeController();
       }
     }
   }

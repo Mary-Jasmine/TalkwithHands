@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import '../models/user_profile.dart';
 import '../services/auth_service.dart';
 import '../ui/app_shell.dart';
+import '../widgets/transparent_sign_video_overlay.dart';
 import 'landing_screen.dart';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
@@ -74,6 +75,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final profile = await AuthService().me();
       if (!mounted) return;
       if (profile == null) {
+        final cachedProfile = await AuthService.cachedProfile();
+        if (!mounted) return;
+        if (cachedProfile != null) {
+          _applyProfile(cachedProfile);
+          await _restoreCachedImages(cachedProfile);
+          _showMessage('Profile is offline right now. Your login is still saved.');
+          return;
+        }
+        final hasSession = await AuthService.hasStoredSession();
+        if (hasSession) {
+          _showMessage('Profile is offline right now. Your login is still saved.');
+          return;
+        }
         Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(builder: (_) => const LandingScreen()),
             (_) => false);
@@ -537,13 +551,13 @@ class _ProfileHero extends StatelessWidget {
                     color: _kPrimaryBg,
                   ),
                   child: ClipOval(
-                    child: photoUrl != null && photoUrl!.isNotEmpty
-                        ? _ProfileImage(
-                            value: photoUrl!,
-                            fit: BoxFit.cover,
-                            fallback: 'assets/images/app_logo.png')
-                        : const Icon(Icons.person_rounded,
-                            size: 40, color: _kPrimary),
+                    child: const TransparentSignVideoOverlay(
+                      videoAsset: 'assets/Set.mp4',
+                      fit: BoxFit.cover,
+                      volume: 0,
+                      threshold: 0.34,
+                      smoothing: 0.08,
+                    ),
                   ),
                 ),
                 Positioned(

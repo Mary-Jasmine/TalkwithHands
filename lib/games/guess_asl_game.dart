@@ -119,12 +119,10 @@ class _AssetFallbackImage extends StatelessWidget {
   // otherwise BoxFit.cover center-crops each frame slightly differently
   // (frames can have tiny size differences) and it reads as the avatar
   // "sliding" to reveal whoever is standing next to it.
-  final Alignment alignment;
   const _AssetFallbackImage({
     required this.candidates,
     required this.fit,
     required this.fallback,
-    this.alignment = Alignment.center,
   });
 
   Widget _tryFrom(int index) {
@@ -132,7 +130,7 @@ class _AssetFallbackImage extends StatelessWidget {
     return Image.asset(
       candidates[index],
       fit: fit,
-      alignment: alignment,
+      alignment: Alignment.center,
       // Keep showing the last good frame while a new one decodes instead of
       // flashing empty for a tick — that gap is what made the swap between
       // frames look like a jump/slide rather than a clean loop.
@@ -2265,52 +2263,57 @@ class _ChoiceTileState extends State<_ChoiceTile>
         },
         onTapCancel: () => _press.reverse(),
         child: ScaleTransition(
-          scale: Tween<double>(begin: 1.0, end: 0.9).animate(
+          scale: Tween<double>(begin: 1.0, end: 0.96).animate(
             CurvedAnimation(parent: _press, curve: Curves.easeOut),
           ),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 350),
-            decoration: BoxDecoration(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(22),
+            child: Material(
               color: _bgColor,
-              borderRadius: BorderRadius.circular(22),
-              border: isEliminated
-                  ? Border.all(
-                      color: Colors.white.withValues(alpha: 0.22), width: 1.5)
-                  : widget.state == _TileState.idle
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 350),
+                decoration: BoxDecoration(
+                  color: _bgColor,
+                  borderRadius: BorderRadius.circular(22),
+                  border: isEliminated
                       ? Border.all(
-                          color: kAccentCyan.withValues(alpha: 0.35),
-                          width: 1.5)
-                      : Border.all(color: Colors.transparent, width: 2),
-              boxShadow: isEliminated
-                  ? []
-                  : [
-                      BoxShadow(
-                        color: (widget.state == _TileState.idle
-                                ? kAccentCyan
-                                : _bgColor)
-                            .withValues(alpha: widget.state == _TileState.idle ? 0.18 : 0.35),
-                        blurRadius: 14,
-                        offset: const Offset(0, 5),
+                          color: Colors.white.withValues(alpha: 0.22), width: 1.5)
+                      : widget.state == _TileState.idle
+                          ? Border.all(
+                              color: kAccentCyan.withValues(alpha: 0.35),
+                              width: 1.5)
+                          : Border.all(color: Colors.transparent, width: 2),
+                  boxShadow: isEliminated
+                      ? []
+                      : [
+                          BoxShadow(
+                            color: (widget.state == _TileState.idle
+                                    ? kAccentCyan
+                                    : _bgColor)
+                                .withValues(alpha: widget.state == _TileState.idle ? 0.18 : 0.35),
+                            blurRadius: 14,
+                            offset: const Offset(0, 5),
+                          )
+                        ],
+                ),
+                child: isEliminated
+                    ? Center(
+                        child: Container(
+                          width: 48,
+                          height: 2.5,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.35),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
                       )
-                    ],
-            ),
-            child: isEliminated
-                ? Center(
-                    child: Container(
-                      width: 48,
-                      height: 2.5,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.35),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  )
-                : const SizedBox.expand(),
+                    : const SizedBox.expand(),
+              ),
           ),
         ),
       ),
-    );
-  }
+    ));
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

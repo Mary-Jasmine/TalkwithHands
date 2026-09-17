@@ -22,6 +22,7 @@ analyzer:
     - android/.gradle/**
     - android/app/build/**
     - lib/guess_asl/**
+    - lib/games/guesssme1/**
 
 linter:
   # The lint rules applied to this project can be customized in the

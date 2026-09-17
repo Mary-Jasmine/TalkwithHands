@@ -11,6 +11,7 @@ import '../ui/background_music_region.dart';
 import '../ui/app_shell.dart';
 import '../utils/url_helper.dart';
 import '../utils/video_url_utils.dart';
+import '../widgets/transparent_sign_video_overlay.dart';
 import 'sign_detector_screen.dart';
 import 'tutorial_video_screen.dart';
 
@@ -433,7 +434,6 @@ class _AvatarWithBubbleState extends State<_AvatarWithBubble>
   ];
 
   int _msgIndex = 0;
-  final bool _bubbleVisible = true;
   late final AnimationController _ctrl;
   late final Animation<double> _scale;
   late final Animation<double> _opacity;
@@ -515,11 +515,16 @@ class _AvatarWithBubbleState extends State<_AvatarWithBubble>
             // avatar
             Positioned(
               bottom: 0,
-              child: Image.asset(
-                'assets/images/characters.png',
-                height: 110,
-                fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+              child: SizedBox(
+                height: 150,
+                width: 240,
+                child: const TransparentSignVideoOverlay(
+                  videoAsset: 'assets/Num.mp4',
+                  fit: BoxFit.contain,
+                  volume: 0,
+                  threshold: 0.34,
+                  smoothing: 0.08,
+                ),
               ),
             ),
           ],

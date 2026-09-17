@@ -60,6 +60,25 @@ class UserProfile {
       ),
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'username': username,
+      'email': email,
+      'photo_url': photoUrl,
+      'cover_photo_url': coverPhotoUrl,
+      'stars': stars,
+      'coins': coins,
+      'unlocked_levels': unlockedLevels,
+      'address': address,
+      'contact_number': contactNumber,
+      'sex': sex,
+      'age': age,
+      'app_feedback': appFeedback.toJson(),
+      'avatar_preferences': avatarPreferences.toJson(),
+    };
+  }
 }
 
 class AppFeedback {
@@ -84,6 +103,14 @@ class AppFeedback {
           : DateTime.tryParse(json['updated_at'].toString()),
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'rating': rating,
+      'review': review,
+      'updated_at': updatedAt?.toIso8601String(),
+    };
+  }
 }
 
 class AvatarPreferences {
@@ -103,5 +130,13 @@ class AvatarPreferences {
       skinTone: (json['skin_tone'] ?? 'default').toString(),
       outfit: (json['outfit'] ?? 'school').toString(),
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'character': character,
+      'skin_tone': skinTone,
+      'outfit': outfit,
+    };
   }
 }

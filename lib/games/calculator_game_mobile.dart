@@ -5,6 +5,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:hand_landmarker/hand_landmarker.dart' as mp_hand;
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../classifiers/sign_classifier.dart';
 import '../classifiers/tflite_sign_classifier.dart';
@@ -30,11 +31,23 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
     minimumConfidence: 0.72,
   );
   bool _cameraStarting = false;
-  bool _manualMode = false;
   bool _capturing = false;
   bool _processing = false;
   bool _streaming = false;
   bool _modelsReady = false;
+  Timer? _roundTimer;
+  int _secondsLeft = 15;
+  int _lives = 3;
+  int _roundAnswer = 0;
+  String _roundEquation = '';
+  String _cameraAnswer = '';
+  bool _gameOver = false;
+  bool _keypadOpen = false;
+  int _score = 0;
+  int _highScore = 0;
+  List<int> _recentScores = [];
+  bool _scoreSaved = false;
+  bool _newHighScore = false;
   int _frameCounter = 0;
   DateTime _lastInferenceAt = DateTime.fromMillisecondsSinceEpoch(0);
 
@@ -59,7 +72,7 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
     'P': '+',
     'M': '-',
     'X': 'x',
-    'Q': '/',
+    'Q': '%',
     'E': '=',
   };
 
@@ -75,6 +88,16 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
       minHandDetectionConfidence: 0.55,
       delegate: mp_hand.HandLandmarkerDelegate.cpu,
     );
+    _newRound();
+    unawaited(_loadScoreData());
+    _roundTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted || _gameOver) return;
+      if (_secondsLeft <= 1) {
+        _loseLife('Time is up!');
+      } else {
+        setState(() => _secondsLeft--);
+      }
+    });
     unawaited(_loadModels());
   }
 
@@ -85,7 +108,135 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
     _cameraController?.dispose();
     _handLandmarker.dispose();
     _tfliteClassifier.close();
+    _roundTimer?.cancel();
     super.dispose();
+  }
+
+  void _newRound() {
+    final random = math.Random();
+    const operators = ['+', '-', 'x', '%'];
+    int left;
+    int right;
+    String operator;
+    int answer;
+    do {
+      operator = operators[random.nextInt(operators.length)];
+      switch (operator) {
+        case '+':
+          left = random.nextInt(21);
+          right = random.nextInt(21 - left);
+          answer = left + right;
+        case '-':
+          left = random.nextInt(21);
+          right = random.nextInt(left + 1);
+          answer = left - right;
+        case 'x':
+          left = random.nextInt(21);
+          right = random.nextInt(21);
+          answer = left * right;
+        default:
+          right = random.nextInt(10) + 1;
+          answer = random.nextInt(21);
+          left = right * answer;
+      }
+    } while (answer > 20);
+    _roundAnswer = answer;
+    _roundEquation = '$left $operator $right = ?';
+    _secondsLeft = 15;
+    _cameraAnswer = '';
+  }
+
+  Future<void> _loadScoreData() async {
+    final preferences = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _highScore = preferences.getInt('calculator_high_score') ?? 0;
+      _recentScores = preferences
+              .getStringList('calculator_recent_scores')
+              ?.map(int.tryParse)
+              .whereType<int>()
+              .take(5)
+              .toList() ??
+          [];
+    });
+  }
+
+  Future<void> _saveSessionScore() async {
+    if (_scoreSaved) return;
+    _scoreSaved = true;
+    final preferences = await SharedPreferences.getInstance();
+    final previousHighScore = preferences.getInt('calculator_high_score') ?? 0;
+    final highScore = math.max(_highScore, _score);
+    final recentScores = [_score, ..._recentScores].take(5).toList();
+    await preferences.setInt('calculator_high_score', highScore);
+    await preferences.setStringList(
+      'calculator_recent_scores',
+      recentScores.map((score) => score.toString()).toList(),
+    );
+    if (!mounted) return;
+    setState(() {
+      _highScore = highScore;
+      _recentScores = recentScores;
+      _newHighScore = _score > previousHighScore;
+    });
+  }
+
+  void _loseLife(String message) {
+    if (_gameOver) return;
+    setState(() {
+      _lives--;
+      if (_lives == 0) {
+        _gameOver = true;
+        _roundTimer?.cancel();
+        _roundTimer = null;
+        unawaited(_saveSessionScore());
+      } else {
+        _newRound();
+      }
+    });
+    _showMessage(_gameOver ? 'Game over!' : message);
+  }
+
+  void _restartGame() {
+    setState(() {
+      _lives = 3;
+      _gameOver = false;
+      _score = 0;
+      _scoreSaved = false;
+      _newHighScore = false;
+      _newRound();
+    });
+    _roundTimer ??= Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted || _gameOver) return;
+      if (_secondsLeft <= 1) {
+        _loseLife('Time is up!');
+      } else {
+        setState(() => _secondsLeft--);
+      }
+    });
+  }
+
+  void _submitCameraDigit(String digit) {
+    if (_gameOver) return;
+    final candidate = '$_cameraAnswer$digit';
+    final number = int.tryParse(candidate);
+    if (number == null || number > 20) {
+      setState(() => _cameraAnswer = '');
+      return;
+    }
+    if (_roundAnswer < 10 || candidate.length == 2) {
+      if (number == _roundAnswer) {
+        setState(() {
+          _score++;
+          _newRound();
+        });
+        _showMessage('Correct!');
+      } else {
+        _loseLife('Try the next one!');
+      }
+    } else {
+      setState(() => _cameraAnswer = candidate);
+    }
   }
 
   @override
@@ -106,7 +257,6 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
     if (_cameraStarting) return;
     setState(() {
       _cameraStarting = true;
-      _manualMode = false;
     });
 
     final permission = await Permission.camera.request();
@@ -179,8 +329,12 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
     }
     setState(() => _capturing = true);
     try {
-      setState(() => _applyDetectedInput(input));
-      _showMessage('Detected $input');
+      if (RegExp(r'^\d$').hasMatch(input)) {
+        _submitCameraDigit(input);
+        _showMessage('Detected $input');
+      } else {
+        _showMessage('Sign a number from 0 to 20.');
+      }
     } catch (error) {
       if (mounted) _showMessage('Sign input failed: $error');
     } finally {
@@ -188,11 +342,12 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
     }
   }
 
-  Future<void> _enableManualMode() async {
-    await _stopCamera();
-    if (!mounted) return;
-    setState(() => _manualMode = true);
-    _showMessage('Manual input enabled.');
+  void _showManualKeypad() {
+    setState(() => _keypadOpen = true);
+  }
+
+  void _closeManualKeypad() {
+    setState(() => _keypadOpen = false);
   }
 
   Future<void> _startImageStream() async {
@@ -241,7 +396,8 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
       final landmarks = detectedHands.isEmpty
           ? null
           : _mapHandLandmarks(detectedHands.first.landmarks);
-      final hit = landmarks == null ? null : _classifyCalculatorSign(landmarks);
+      final hit =
+          landmarks == null ? null : await _classifyCalculatorSign(landmarks);
       final input = hit == null ? null : _calculatorInputFor(hit);
 
       if (!mounted) return;
@@ -263,17 +419,28 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
         .toList(growable: false);
   }
 
-  SignResult? _classifyCalculatorSign(List<HandLandmark> landmarks) {
-    final numberHit = _tfliteClassifier.classifyNumber(landmarks) ??
-        _classifier.classifyNumber(landmarks);
-    if (numberHit != null && _calculatorInputFor(numberHit) != null) {
-      return numberHit;
+  Future<SignResult?> _classifyCalculatorSign(
+    List<HandLandmark> landmarks,
+  ) async {
+    final tfliteNumberHit = await _tfliteClassifier.classifyNumber(landmarks);
+    if (tfliteNumberHit != null && _calculatorInputFor(tfliteNumberHit) != null) {
+      return tfliteNumberHit;
     }
 
-    final alphabetHit = _tfliteClassifier.classifyAlphabet(landmarks) ??
-        _classifier.classifyAlphabet(landmarks);
-    if (alphabetHit != null && _calculatorInputFor(alphabetHit) != null) {
-      return alphabetHit;
+    final ruleNumberHit = _classifier.classifyNumber(landmarks);
+    if (ruleNumberHit != null && _calculatorInputFor(ruleNumberHit) != null) {
+      return ruleNumberHit;
+    }
+
+    final tfliteAlphabetHit =
+        await _tfliteClassifier.classifyAlphabet(landmarks);
+    if (tfliteAlphabetHit != null && _calculatorInputFor(tfliteAlphabetHit) != null) {
+      return tfliteAlphabetHit;
+    }
+
+    final ruleAlphabetHit = _classifier.classifyAlphabet(landmarks);
+    if (ruleAlphabetHit != null && _calculatorInputFor(ruleAlphabetHit) != null) {
+      return ruleAlphabetHit;
     }
 
     return null;
@@ -303,25 +470,6 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
     _stableInput = _stableFrames >= _stableFramesNeeded ? input : null;
   }
 
-  void _applyDetectedInput(String value) {
-    if (RegExp(r'^\d$').hasMatch(value)) {
-      _inputDigit(value);
-    } else if (value == 'AC') {
-      _clearCalculator();
-    } else if (value == 'DEL') {
-      _deleteLast();
-    } else if (value == '=') {
-      _resolveOperation();
-    } else {
-      _chooseOperator(value);
-    }
-    _stableInput = null;
-    _lastRawInput = null;
-    _stableFrames = 0;
-    _classifier.reset();
-    _tfliteClassifier.resetSequenceBuffer();
-  }
-
   void _showMessage(String message) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -334,11 +482,6 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
   }
 
   void _onCalculatorTap(String value) {
-    if (!_manualMode) {
-      _showMessage('Tap Manual to use the keypad.');
-      return;
-    }
-
     setState(() {
       if (RegExp(r'^\d$').hasMatch(value)) {
         _inputDigit(value);
@@ -348,9 +491,6 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
         _clearCalculator();
       } else if (value == 'DEL') {
         _deleteLast();
-      } else if (value == '%') {
-        _display = _formatNumber(_currentValue() / 100);
-        _syncExpressionWithDisplay();
       } else if (value == '=') {
         _resolveOperation();
       } else {
@@ -426,12 +566,11 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
       '+' => left + right,
       '-' => left - right,
       'x' => left * right,
-      '/' => right == 0 ? double.nan : left / right,
+      '%' => right == 0 ? double.nan : left / right,
       _ => right,
     };
 
-    _expression =
-        '${_formatNumber(left)} $operator ${_formatNumber(right)} =';
+    _expression = '${_formatNumber(left)} $operator ${_formatNumber(right)} =';
     _display = result.isNaN ? 'Error' : _formatNumber(result);
     _storedValue = null;
     _pendingOperator = null;
@@ -456,110 +595,147 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
       body: BackgroundMusicRegion(
         track: BackgroundMusicTrack.calculator,
         child: LayoutBuilder(
-        builder: (context, constraints) {
-          final canvasWidth = constraints.maxWidth.clamp(0.0, 430.0).toDouble();
-          final canvasHeight = constraints.maxHeight;
-          return Center(
-            child: SizedBox(
-              width: canvasWidth,
-              height: canvasHeight,
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Positioned.fill(
-                    child: Image.asset(
-                      '$_assetRoot/cal-bg.png',
-                      fit: BoxFit.cover,
+          builder: (context, constraints) {
+            final canvasWidth =
+                constraints.maxWidth.clamp(0.0, 430.0).toDouble();
+            final canvasHeight = constraints.maxHeight;
+            return Center(
+              child: SizedBox(
+                width: canvasWidth,
+                height: canvasHeight,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Positioned.fill(
+                      child: Image.asset(
+                        '$_assetRoot/cal-bg.png',
+                        fit: BoxFit.cover,
+                      ),
                     ),
-                  ),
-                  SafeArea(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: Alignment.topCenter,
-                        child: SizedBox(
-                          width: canvasWidth - 20,
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              _buildTopBar(context),
-                              const SizedBox(height: 8),
-                              _buildHeroIcon(),
-                              const SizedBox(height: 14),
-                              _buildGameStage(),
-                              const SizedBox(height: 12),
-                              _buildActionButtons(),
-                              const SizedBox(height: 10),
-                              _buildCalculator(),
-                            ],
+                    SafeArea(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.topCenter,
+                          child: SizedBox(
+                            width: canvasWidth - 20,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                _buildTopBar(context),
+                                const SizedBox(height: 8),
+                                _buildEquationCard(),
+                                const SizedBox(height: 10),
+                                _buildGameStage(),
+                                const SizedBox(height: 12),
+                                _buildActionButtons(),
+                              ],
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-                  const _DecorativeAsset(
-                    asset: 'peace.png',
-                    left: 26,
-                    top: 174,
-                    width: 48,
-                    rotation: -0.18,
-                  ),
-                  const _DecorativeAsset(
-                    asset: 'wssun.png',
-                    right: 20,
-                    top: 78,
-                    width: 76,
-                  ),
-                  const _DecorativeAsset(
-                    asset: 'cloud.png',
-                    left: 77,
-                    top: 78,
-                    width: 48,
-                  ),
-                  const _DecorativeAsset(
-                    asset: 'clouds.png',
-                    right: 39,
-                    top: 146,
-                    width: 48,
-                  ),
-                  const _DecorativeAsset(
-                    asset: 'sign.png',
-                    right: 19,
-                    top: 274,
-                    width: 78,
-                    rotation: 0.13,
-                  ),
-                  const _DecorativeAsset(
-                    asset: 'bulb.png',
-                    right: 4,
-                    top: 386,
-                    width: 38,
-                    rotation: 0.16,
-                  ),
-                  const _DecorativeAsset(
-                    asset: 'rainbow.png',
-                    left: -6,
-                    bottom: 248,
-                    width: 83,
-                  ),
-                  const _DecorativeAsset(
-                    asset: 'avatar.png',
-                    right: 6,
-                    bottom: 31,
-                    width: 103,
-                  ),
-                  const _DecorativeAsset(
-                    asset: 'flowers.png',
-                    left: 4,
-                    bottom: 0,
-                    width: 72,
-                  ),
-                ],
+                    AnimatedPositioned(
+                      duration: const Duration(milliseconds: 280),
+                      curve: Curves.easeOutCubic,
+                      left: 0,
+                      right: 0,
+                      bottom: _keypadOpen ? 0 : -(canvasHeight / 2),
+                      height: canvasHeight / 2,
+                      child: IgnorePointer(
+                        ignoring: !_keypadOpen,
+                        child: Material(
+                          color: const Color(0xEE071B38),
+                          child: SafeArea(
+                            child: Column(
+                              children: [
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: IconButton(
+                                    tooltip: 'Close keypad',
+                                    icon: const Icon(Icons.close_rounded),
+                                    color: Colors.white,
+                                    onPressed: _closeManualKeypad,
+                                  ),
+                                ),
+                                Expanded(child: _buildCalculator()),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (_gameOver)
+                      Positioned.fill(
+                        child: Container(
+                          color: const Color(0xCC000000),
+                          alignment: Alignment.center,
+                          child: _buildGameOverCard(),
+                        ),
+                      ),
+                    const _DecorativeAsset(
+                      asset: 'peace.png',
+                      left: 26,
+                      top: 174,
+                      width: 48,
+                      rotation: -0.18,
+                    ),
+                    const _DecorativeAsset(
+                      asset: 'wssun.png',
+                      right: 20,
+                      top: 78,
+                      width: 76,
+                    ),
+                    const _DecorativeAsset(
+                      asset: 'cloud.png',
+                      left: 77,
+                      top: 78,
+                      width: 48,
+                    ),
+                    const _DecorativeAsset(
+                      asset: 'clouds.png',
+                      right: 39,
+                      top: 146,
+                      width: 48,
+                    ),
+                    const _DecorativeAsset(
+                      asset: 'sign.png',
+                      right: 19,
+                      top: 274,
+                      width: 78,
+                      rotation: 0.13,
+                    ),
+                    const _DecorativeAsset(
+                      asset: 'bulb.png',
+                      right: 4,
+                      top: 386,
+                      width: 38,
+                      rotation: 0.16,
+                    ),
+                    const _DecorativeAsset(
+                      asset: 'rainbow.png',
+                      left: -6,
+                      bottom: 248,
+                      width: 83,
+                    ),
+                    const _DecorativeAsset(
+                      asset: 'avatar.png',
+                      right: 6,
+                      bottom: 31,
+                      width: 103,
+                    ),
+                    const _DecorativeAsset(
+                      asset: 'flowers.png',
+                      left: 4,
+                      bottom: 0,
+                      width: 72,
+                    ),
+                  ],
+                ),
               ),
-            ),
-          );
-        },
+            );
+          },
         ),
       ),
     );
@@ -569,25 +745,209 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        _CircleIconButton(
-          color: const Color(0xFFF3382E),
-          icon: Icons.arrow_back_rounded,
-          onTap: () => Navigator.of(context).maybePop(),
+        Row(
+          children: [
+            _CircleIconButton(
+              color: const Color(0xFFF3382E),
+              icon: Icons.arrow_back_rounded,
+              onTap: () => Navigator.of(context).maybePop(),
+            ),
+            const SizedBox(width: 10),
+            _StatusPill(
+              icon: Icons.timer_rounded,
+              label: '$_secondsLeft',
+              color: _secondsLeft <= 5
+                  ? const Color(0xFFF3382E)
+                  : const Color(0xFF1268EA),
+            ),
+          ],
         ),
-        _CircleIconButton(
-          color: const Color(0xFFFFA000),
-          icon: Icons.menu_rounded,
-          onTap: () => _showMessage('Menu'),
+        Row(
+          children: List.generate(
+            3,
+            (index) => Padding(
+              padding: const EdgeInsets.only(left: 3),
+              child: Icon(
+                Icons.favorite_rounded,
+                size: 30,
+                color: index < _lives
+                    ? const Color(0xFFF3382E)
+                    : Colors.white.withValues(alpha: 0.25),
+              ),
+            ),
+          ),
         ),
       ],
     );
   }
 
-  Widget _buildHeroIcon() {
-    return Image.asset(
-      '$_assetRoot/calculator_icon.png',
-      width: 116,
-      fit: BoxFit.contain,
+  Widget _buildGameOverCard() {
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 360),
+      margin: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFA000),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFFFD54F), width: 3),
+        boxShadow: const [
+          BoxShadow(color: Color(0x9900528C), offset: Offset(0, 6)),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text('GAME OVER!',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 28,
+                fontWeight: FontWeight.w900,
+              )),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1268EA),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white, width: 2),
+            ),
+            child: Column(children: [
+              const Text('YOUR SCORE',
+                  style: TextStyle(
+                    color: Color(0xFFFFD43B),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                  )),
+              Text('$_score',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 42,
+                    fontWeight: FontWeight.w900,
+                  )),
+            ]),
+          ),
+          const SizedBox(height: 10),
+          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            const Text('HIGH SCORE  ',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900,
+                )),
+            Text('$_highScore',
+                style: const TextStyle(
+                  color: Color(0xFF1268EA),
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                )),
+          ]),
+          if (_newHighScore) ...[
+            const SizedBox(height: 7),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+              decoration: BoxDecoration(
+                color: const Color(0xFF35C84A),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.white, width: 2),
+              ),
+              child: const Text('NEW HIGH SCORE!',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                  )),
+            ),
+          ],
+          const SizedBox(height: 12),
+          const Align(
+            alignment: Alignment.centerLeft,
+            child: Text('RECENT SCORES',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w900,
+                )),
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (var index = 0; index < _recentScores.length; index++)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: index == 0 ? const Color(0xFF1268EA) : Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color:
+                          index == 0 ? Colors.white : const Color(0xFF1268EA),
+                      width: 2,
+                    ),
+                  ),
+                  child: Text('${_recentScores[index]}',
+                      style: TextStyle(
+                        color:
+                            index == 0 ? Colors.white : const Color(0xFF1268EA),
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                      )),
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _GameActionButton(
+            icon: Icons.refresh_rounded,
+            label: 'Play Again',
+            color: const Color(0xFF1268EA),
+            onTap: _restartGame,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEquationCard() {
+    return Container(
+      width: 224,
+      height: 106,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: const Color(0xFF1268EA),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFF72D9FF), width: 3),
+        boxShadow: const [
+          BoxShadow(color: Color(0x8800528C), offset: Offset(0, 4)),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text('SOLVE THIS!',
+              style: TextStyle(
+                color: Color(0xFFFFD43B),
+                fontSize: 13,
+                fontWeight: FontWeight.w900,
+              )),
+          const SizedBox(height: 5),
+          Text(_roundEquation,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 30,
+                fontWeight: FontWeight.w900,
+              )),
+          if (_cameraAnswer.isNotEmpty)
+            Text('Sign: $_cameraAnswer',
+                style: const TextStyle(
+                  color: Color(0xFFFFD43B),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                )),
+        ],
+      ),
     );
   }
 
@@ -598,7 +958,7 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
       children: [
         Container(
           width: 224,
-          height: 191,
+          height: 224,
           padding: const EdgeInsets.all(7),
           decoration: BoxDecoration(
             color: const Color(0xFFFFA000),
@@ -724,34 +1084,20 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
       child: Row(
         children: [
           Expanded(
-            flex: 12,
-            child: _GameActionButton(
-              icon: Icons.camera_alt_rounded,
-              label: 'Start Camera',
-              color: const Color(0xFF1268EA),
-              onTap: _startCamera,
-            ),
-          ),
+              child: _GameActionButton(
+            icon: Icons.calculate_rounded,
+            label: 'Manual Keypad',
+            color: const Color(0xFFFF7900),
+            onTap: _showManualKeypad,
+          )),
           const SizedBox(width: 8),
           Expanded(
-            flex: 9,
-            child: _GameActionButton(
-              icon: Icons.center_focus_strong_rounded,
-              label: 'Capture',
-              color: const Color(0xFF35C84A),
-              onTap: _captureFrame,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            flex: 9,
-            child: _GameActionButton(
-              icon: Icons.front_hand_rounded,
-              label: 'Manual',
-              color: const Color(0xFFFF7900),
-              onTap: _enableManualMode,
-            ),
-          ),
+              child: _GameActionButton(
+            icon: Icons.camera_alt_rounded,
+            label: _cameraReady ? 'Capture Sign' : 'Camera',
+            color: const Color(0xFF1268EA),
+            onTap: _cameraReady ? _captureFrame : _startCamera,
+          )),
         ],
       ),
     );
@@ -759,11 +1105,11 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
 
   Widget _buildCalculator() {
     const rows = [
-      ['AC', 'DEL', '%', '/'],
-      ['7', '8', '9', 'x'],
+      ['AC', 'DEL', '%', 'x'],
+      ['7', '8', '9', ''],
       ['4', '5', '6', '-'],
       ['3', '2', '1', '+'],
-      ['0', '.', '='],
+      ['0', '.', '=', ''],
     ];
 
     return LayoutBuilder(
@@ -778,96 +1124,99 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
         final nominalButtonWidth =
             (calculatorWidth - horizontalPadding * 2 - buttonGap * 3) / 4;
         final buttonHeight =
-            (nominalButtonWidth * 0.78).clamp(44.0, 56.0).toDouble();
+            (nominalButtonWidth * 0.78 - 2.0).clamp(42.0, 54.0).toDouble();
 
-        return Container(
-          width: calculatorWidth,
-          padding: EdgeInsets.fromLTRB(
-            horizontalPadding,
-            0,
-            horizontalPadding,
-            12,
-          ),
-          decoration: BoxDecoration(
-            color: Colors.black,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFF1E1E1E), width: 2),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x66000000),
-                blurRadius: 8,
-                offset: Offset(0, 5),
-              ),
-            ],
-          ),
-          child: Column(
-            children: [
-              Container(
-                alignment: Alignment.centerRight,
-                padding: const EdgeInsets.only(right: 4, top: 6, bottom: 4),
-                decoration: const BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(color: Color(0xFF242424), width: 1),
+        return Center(
+          child: Container(
+            width: calculatorWidth,
+            padding: EdgeInsets.fromLTRB(
+              horizontalPadding,
+              0,
+              horizontalPadding,
+              12,
+            ),
+            decoration: BoxDecoration(
+              color: Colors.black,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFF1E1E1E), width: 2),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x66000000),
+                  blurRadius: 8,
+                  offset: Offset(0, 5),
+                ),
+              ],
+            ),
+            child: Column(
+              children: [
+                Container(
+                  alignment: Alignment.centerRight,
+                  padding: const EdgeInsets.only(right: 4, top: 6, bottom: 4),
+                  decoration: const BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(color: Color(0xFF242424), width: 1),
+                    ),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      if (_expression.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 2),
+                          child: Text(
+                            _expression,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.55),
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      SizedBox(
+                        height: 44,
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerRight,
+                          child: Text(
+                            _display,
+                            maxLines: 1,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 40,
+                              height: 1,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    if (_expression.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 2),
-                        child: Text(
-                          _expression,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.55),
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                          ),
+                const SizedBox(height: 12),
+                for (final row in rows) ...[
+                  Row(
+                    children: [
+                      for (final value in row) ...[
+                        Expanded(
+                          child: value.isEmpty
+                              ? const SizedBox.shrink()
+                              : _CalcButton(
+                                  label: value,
+                                  height: buttonHeight,
+                                  onTap: () => _onCalculatorTap(value),
+                                ),
                         ),
-                      ),
-                    SizedBox(
-                      height: 44,
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: Alignment.centerRight,
-                        child: Text(
-                          _display,
-                          maxLines: 1,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 40,
-                            height: 1,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              for (final row in rows) ...[
-                Row(
-                  children: [
-                    for (final value in row) ...[
-                      Expanded(
-                        flex: value == '=' ? 2 : 1,
-                        child: _CalcButton(
-                          label: value,
-                          height: buttonHeight,
-                          onTap: () => _onCalculatorTap(value),
-                        ),
-                      ),
-                      if (value != row.last) SizedBox(width: buttonGap),
+                        if (value != row.last) SizedBox(width: buttonGap),
+                      ],
                     ],
-                  ],
-                ),
-                if (row != rows.last) SizedBox(height: buttonGap),
+                  ),
+                  if (row != rows.last) SizedBox(height: buttonGap),
+                ],
               ],
-            ],
+            ),
           ),
         );
       },
@@ -949,6 +1298,43 @@ class _CircleIconButton extends StatelessWidget {
   }
 }
 
+class _StatusPill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  const _StatusPill({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white, width: 2),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: Colors.white, size: 20),
+          const SizedBox(width: 4),
+          Text(label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.w900,
+              )),
+        ],
+      ),
+    );
+  }
+}
+
 class _GameActionButton extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -978,8 +1364,10 @@ class _GameActionButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: Colors.white, width: 2),
           ),
+          alignment: Alignment.center,
           child: Row(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisSize: MainAxisSize.max,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(icon, color: Colors.white, size: 18),
               const SizedBox(width: 4),
@@ -1017,7 +1405,7 @@ class _CalcButton extends StatelessWidget {
   });
 
   bool get _filled =>
-      const {'AC', 'DEL', '%', '/', 'x', '-', '+', '='}.contains(label);
+      const {'AC', 'DEL', '%', 'x', '-', '+', '='}.contains(label);
 
   @override
   Widget build(BuildContext context) {

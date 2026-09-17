@@ -140,7 +140,7 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
   DateTime _lastInferenceAt = DateTime.fromMillisecondsSinceEpoch(0);
   DateTime _lastUiUpdateAt = DateTime.fromMillisecondsSinceEpoch(0);
 
-  late final mp_hand.HandLandmarkerPlugin _handLandmarker;
+  mp_hand.HandLandmarkerPlugin? _handLandmarker;
   final SignClassifier _classifier = SignClassifier();
   final TfliteSignClassifier _tfliteClassifier = TfliteSignClassifier();
   final TtsService _tts = TtsService();
@@ -173,17 +173,14 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
   // Require 8 consistent frames before confirming — prevents mid-transition false triggers
   // At ~3 detections/sec on TECNO KM4k this means ~2.5 seconds of holding the sign
   static const int _holdNeed = 4;
-  // PERF FIX 1: Process every 3rd frame instead of every 2nd.
-  // At 30fps this means ~10 detections/sec — more than enough, less CPU load.
-  static const int _processEveryNFrames = 15;
-  // PERF FIX 2: Minimum 80ms between inferences (~12fps cap).
-  // Prevents MediaPipe from stacking calls on slow devices.
-  static const Duration _minInferenceGap = Duration(milliseconds: 450);
-  // PERF FIX 3: UI refreshes at most every 80ms to avoid setState storms.
-  static const Duration _minUiGap = Duration(milliseconds: 300);
-  // PERF FIX 4: Increase smoothing factor slightly (0.45 → 0.35).
-  // Lower value = more weight on previous frame = less jitter, less compute.
-  static const double _landmarkSmoothing = 0.25;
+  // Process every 2nd frame and let the minimum inference gap cap the load.
+  static const int _processEveryNFrames = 2;
+  // Minimum 60ms between inference attempts (~16fps cap).
+  static const Duration _minInferenceGap = Duration(milliseconds: 60);
+  // UI refreshes at most every 40ms (~25fps).
+  static const Duration _minUiGap = Duration(milliseconds: 40);
+  // Trust the newest detected position more so the overlay trails less.
+  static const double _landmarkSmoothing = 0.7;
 
   late DetectionMode _mode;
   MotionCategory _motionCategory = MotionCategory.words;
@@ -225,15 +222,6 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
     super.initState();
     _mode = widget.initialMode;
     WidgetsBinding.instance.addObserver(this);
-    _handLandmarker = mp_hand.HandLandmarkerPlugin.create(
-      numHands: 1,
-      minHandDetectionConfidence: 0.55,
-      // PERF FIX 5: Use CPU delegate instead of GPU.
-      // GPU sounds faster but on most Android phones it causes extra
-      // memory-copy overhead (CPU↔GPU transfer) that actually slows things down.
-      // CPU delegate is more stable and lower-latency for hand detection.
-      delegate: mp_hand.HandLandmarkerDelegate.cpu,
-    );
     _init();
   }
 
@@ -248,6 +236,13 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
       });
       return;
     }
+    setState(() => _loadText = 'Loading hand tracker...');
+    _handLandmarker = mp_hand.HandLandmarkerPlugin.create(
+      numHands: 1,
+      minHandDetectionConfidence: 0.55,
+      // GPU is the faster path for this plugin on supported Android devices.
+      delegate: mp_hand.HandLandmarkerDelegate.gpu,
+    );
     await _requestCameraPermission();
   }
 
@@ -345,12 +340,10 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
       List<List<HandLandmark>>? handsLandmarks;
       try {
         if (image.planes.length >= 3) {
-          // PERF FIX: Run detection directly — hand_landmarker handles
-          // its own threading internally via the native MediaPipe layer.
-          // Wrapping in compute() would actually add overhead due to
-          // serialization of CameraImage across isolate boundaries.
+          final handLandmarker = _handLandmarker;
+          if (handLandmarker == null) return;
           final detectedHands =
-              _handLandmarker.detect(image, sensorOrientation);
+              handLandmarker.detect(image, sensorOrientation);
           final maxHands = _mode == DetectionMode.words ||
                   (_mode == DetectionMode.motion &&
                       _motionCategory == MotionCategory.words)
@@ -388,7 +381,8 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
       SignResult? hit;
       final canClassify = _detectionArmed && _startCountdown == 0;
       if (canClassify && primaryHandLandmarks != null) {
-        hit = _classifyCurrentFrame(primaryHandLandmarks, handsLandmarks);
+        hit =
+            await _classifyCurrentFrame(primaryHandLandmarks, handsLandmarks);
         _trackCaptureHit(hit);
       }
       if (!canClassify) {
@@ -424,45 +418,50 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
     }
   }
 
-  SignResult? _classifyCurrentFrame(
+  Future<SignResult?> _classifyCurrentFrame(
     List<HandLandmark> primaryHandLandmarks,
     List<List<HandLandmark>>? handsLandmarks,
-  ) {
+  ) async {
     SignResult? hit;
     switch (_mode) {
       case DetectionMode.az:
         final ruleHit = _classifier.classifyAlphabet(primaryHandLandmarks);
-        final sequenceHit =
-            _tfliteClassifier.pushFrameAndClassify(primaryHandLandmarks);
-        final tfliteHit = _tfliteClassifier.classifyAlphabet(
+        final sequenceHit = await _tfliteClassifier
+            .pushFrameAndClassify(primaryHandLandmarks);
+        final tfliteHit = await _tfliteClassifier.classifyAlphabet(
           primaryHandLandmarks,
         );
         hit = _chooseAlphabetHit(ruleHit, tfliteHit, sequenceHit);
         break;
       case DetectionMode.num:
-        hit = _tfliteClassifier.classifyNumber(primaryHandLandmarks) ??
+        hit = await _tfliteClassifier.classifyNumber(primaryHandLandmarks) ??
             _classifier.classifyNumber(primaryHandLandmarks);
         break;
       case DetectionMode.words:
-        hit = _tfliteClassifier.classifyWordsFromHands(handsLandmarks) ??
-            _tfliteClassifier.pushFrameAndClassify(primaryHandLandmarks) ??
+        final tfliteWordHit =
+            await _tfliteClassifier.classifyWordsFromHands(handsLandmarks);
+        final sequenceHit =
+            await _tfliteClassifier.pushFrameAndClassify(primaryHandLandmarks);
+        hit = tfliteWordHit ??
+            sequenceHit ??
             _classifier.classifyWordsFromHands(handsLandmarks);
         break;
       case DetectionMode.motion:
-        hit = _classifyMotionFrame(primaryHandLandmarks, handsLandmarks);
+        hit =
+            await _classifyMotionFrame(primaryHandLandmarks, handsLandmarks);
         break;
     }
     return _acceptedHit(hit);
   }
 
-  SignResult? _classifyMotionFrame(
+  Future<SignResult?> _classifyMotionFrame(
     List<HandLandmark> primaryHandLandmarks,
     List<List<HandLandmark>>? handsLandmarks,
-  ) {
+  ) async {
     switch (_motionCategory) {
       case MotionCategory.az:
-        final sequenceHit =
-            _tfliteClassifier.pushFrameAndClassify(primaryHandLandmarks);
+        final sequenceHit = await _tfliteClassifier
+            .pushFrameAndClassify(primaryHandLandmarks);
         if (sequenceHit != null &&
             (sequenceHit.label == 'J' || sequenceHit.label == 'Z')) {
           return SignResult(
@@ -476,8 +475,8 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
       case MotionCategory.num:
         return _classifier.classifyMotionNumber(primaryHandLandmarks);
       case MotionCategory.words:
-        final sequenceHit =
-            _tfliteClassifier.pushFrameAndClassify(primaryHandLandmarks);
+        final sequenceHit = await _tfliteClassifier
+            .pushFrameAndClassify(primaryHandLandmarks);
         if (sequenceHit != null && sequenceHit.label == 'hello') {
           return SignResult(
             label: sequenceHit.label,
@@ -887,7 +886,7 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
     _startCountdownTimer?.cancel();
     _stopImageStream();
     _cameraController?.dispose();
-    _handLandmarker.dispose();
+    _handLandmarker?.dispose();
     _tfliteClassifier.close();
     _tts.dispose();
     super.dispose();

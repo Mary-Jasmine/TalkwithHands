@@ -11,6 +11,7 @@ import '../ui/background_music_region.dart';
 import '../ui/app_shell.dart';
 import '../utils/url_helper.dart';
 import '../utils/video_url_utils.dart';
+import '../widgets/transparent_sign_video_overlay.dart';
 import 'sign_detector_screen.dart';
 import 'tutorial_video_screen.dart';
 
@@ -25,41 +26,6 @@ const Set<String> _excludedBasicWordCategories = {
   'number',
   'numbers',
 };
-
-const List<String> _knownCategories = [
-  'Animal',
-  'Color',
-  'Days of the week',
-  'Direction and Location',
-  'Emotion',
-  'Emotions',
-  'Environment',
-  'Family',
-  'Feelings',
-  'Food',
-  'Food Taste',
-  'Fruits',
-  'Greetings',
-  'Health and Emergency',
-  'Kitchenware',
-  'Money and Shopping',
-  'Months',
-  'NOT EDIT',
-  'Not Edited',
-  'Operations',
-  'Person',
-  'Personal Things',
-  'Questions',
-  'Religion and Values',
-  'Responses and Reactions',
-  'School',
-  'School Supply',
-  'Shape',
-  'Technology and Communication',
-  'Temperature',
-  'Time',
-  'Transportation',
-];
 
 // ── Sign language sets ──────────────────────────────────────────────────────
 // Categories shown when the user switches the toggle to "FSL Signs".
@@ -98,8 +64,6 @@ const Map<String, IconData> _categoryIcons = {
   'Transportation': Icons.directions_car_outlined,
 };
 
-enum SignLanguage { asl, fsl }
-
 class BasicWordsScreen extends StatefulWidget {
   final String userName;
 
@@ -118,7 +82,6 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
   final _searchFocusNode = FocusNode();
   late Future<List<BasicWord>> _wordFuture;
   String _query = '';
-  SignLanguage _signLanguage = SignLanguage.asl;
 
   // null = show category landing grid; non-null = show word list for that category
   String? _selectedCategory;
@@ -275,51 +238,6 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
                     ),
                   ),
 
-                  // ── ASL / FSL switch ─────────────────────────────────────
-                  if (false)
-                    Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 0),
-                    child: Center(
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(
-                              color: const Color(0xFFCCCCCC), width: 1.4),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.06),
-                              blurRadius: 6,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _SignLanguageOption(
-                              label: 'ASL Signs',
-                              selected: _signLanguage == SignLanguage.asl,
-                              onTap: () => setState(() {
-                                _signLanguage = SignLanguage.asl;
-                                _selectedCategory = null;
-                              }),
-                            ),
-                            _SignLanguageOption(
-                              label: 'FSL Signs',
-                              selected: _signLanguage == SignLanguage.fsl,
-                              onTap: () => setState(() {
-                                _signLanguage = SignLanguage.fsl;
-                                _selectedCategory = null;
-                              }),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-
                   // ── Search bar ────────────────────────────────────────────
                   SizedBox(
                     height: math.max(
@@ -459,6 +377,18 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
                           ),
                         ],
                       ),
+                    ),
+                  ),
+
+                  const SizedBox(
+                    height: 120,
+                    width: 240,
+                    child: TransparentSignVideoOverlay(
+                      videoAsset: 'assets/Basic.mp4',
+                      fit: BoxFit.contain,
+                      volume: 0,
+                      threshold: 0.34,
+                      smoothing: 0.08,
                     ),
                   ),
 
@@ -818,43 +748,6 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
           ),
         );
       },
-    );
-  }
-}
-
-// ── ASL / FSL toggle pill option ───────────────────────────────────────────
-class _SignLanguageOption extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _SignLanguageOption({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: selected ? kVividBlue : Colors.transparent,
-      borderRadius: BorderRadius.circular(999),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(999),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-          alignment: Alignment.center,
-          child: Text(
-            label,
-            style: TextStyle(
-              color: selected ? Colors.white : const Color(0xFF9DA4AD),
-              fontSize: 13,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

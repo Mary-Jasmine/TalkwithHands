@@ -7,6 +7,7 @@ import '../models/user_progress.dart';
 import '../services/activity_time_service.dart';
 import '../services/progress_service.dart';
 import '../ui/app_shell.dart';
+import '../widgets/transparent_sign_video_overlay.dart';
 
 // ── Colour tokens (same as alphabets/numbers) ─────────────────────────────────
 const kVividBlue = Color(0xFF1500C8);
@@ -156,12 +157,16 @@ class _ProgressScreenState extends State<ProgressScreen> {
                           icon: 'noto:dizzy', size: 14),
                     ),
                     Center(
-                      child: Image.asset(
-                        'assets/images/characters.png',
-                        height: 110,
-                        fit: BoxFit.contain,
-                        errorBuilder: (_, __, ___) =>
-                            const _AvatarFigure(height: 100),
+                      child: SizedBox(
+                        height: 150,
+                        width: 240,
+                        child: const TransparentSignVideoOverlay(
+                          videoAsset: 'assets/Progress.mp4',
+                          fit: BoxFit.contain,
+                          volume: 0,
+                          threshold: 0.34,
+                          smoothing: 0.08,
+                        ),
                       ),
                     ),
                   ],
@@ -827,105 +832,6 @@ class _SectionTitle extends StatelessWidget {
       ],
     );
   }
-}
-
-// ── Avatar figure (fallback) ──────────────────────────────────────────────────
-class _AvatarFigure extends StatelessWidget {
-  final double height;
-  const _AvatarFigure({this.height = 300});
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: height * 0.6,
-      height: height,
-      child: FittedBox(
-        fit: BoxFit.contain,
-        child: SizedBox(
-          width: 180,
-          height: 300,
-          child: CustomPaint(painter: _AvatarPainter()),
-        ),
-      ),
-    );
-  }
-}
-
-class _AvatarPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final skin = Paint()..color = const Color(0xFFFF9A6A);
-    final shirt = Paint()..color = const Color.fromARGB(255, 36, 110, 119);
-    final pants = Paint()..color = const Color.fromARGB(255, 100, 105, 124);
-    final hair = Paint()..color = const Color.fromARGB(25, 5, 5, 4);
-    final shoe = Paint()..color = const Color(0xFFF0A51A);
-    final stroke = Paint()
-      ..color = const Color.fromARGB(255, 179, 93, 58)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2;
-
-    final cx = size.width / 2;
-    canvas.drawCircle(Offset(cx, 45), 34, skin);
-    final hairPath = Path()
-      ..moveTo(cx - 40, 44)
-      ..quadraticBezierTo(cx - 25, 0, cx + 30, 20)
-      ..quadraticBezierTo(cx + 45, 85, cx + 46, 85)
-      ..lineTo(cx - 45, 76)
-      ..close();
-    canvas.drawPath(hairPath, hair);
-    canvas.drawCircle(Offset(cx - 12, 44), 5, Paint()..color = Colors.white);
-    canvas.drawCircle(Offset(cx + 12, 44), 5, Paint()..color = Colors.white);
-    canvas.drawCircle(Offset(cx - 12, 44), 2.4, Paint()..color = Colors.black);
-    canvas.drawCircle(Offset(cx + 12, 44), 2.4, Paint()..color = Colors.black);
-    canvas.drawArc(
-      Rect.fromCenter(center: Offset(cx, 56), width: 26, height: 16),
-      0,
-      math.pi,
-      false,
-      Paint()
-        ..color = const Color(0xFF7A4035)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2,
-    );
-    canvas.drawRect(
-        Rect.fromCenter(center: Offset(cx, 92), width: 18, height: 29), skin);
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromCenter(center: Offset(cx, 150), width: 90, height: 120),
-        const Radius.circular(24),
-      ),
-      shirt,
-    );
-    canvas.drawRect(
-        Rect.fromCenter(center: Offset(cx - 54, 160), width: 18, height: 100),
-        skin);
-    canvas.drawRect(
-        Rect.fromCenter(center: Offset(cx + 54, 160), width: 18, height: 100),
-        skin);
-    canvas.drawRect(
-        Rect.fromCenter(center: Offset(cx - 18, 246), width: 26, height: 112),
-        pants);
-    canvas.drawRect(
-        Rect.fromCenter(center: Offset(cx + 18, 246), width: 26, height: 112),
-        pants);
-    canvas.drawRRect(
-        RRect.fromRectAndRadius(
-            Rect.fromCenter(
-                center: Offset(cx - 18, 292), width: 34, height: 16),
-            const Radius.circular(8)),
-        shoe);
-    canvas.drawRRect(
-        RRect.fromRectAndRadius(
-            Rect.fromCenter(
-                center: Offset(cx + 18, 292), width: 34, height: 16),
-            const Radius.circular(8)),
-        shoe);
-    canvas.drawLine(Offset(cx - 56, 210), Offset(cx - 62, 242), stroke);
-    canvas.drawLine(Offset(cx + 56, 210), Offset(cx + 62, 242), stroke);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 // ── Legend dot ────────────────────────────────────────────────────────────────
