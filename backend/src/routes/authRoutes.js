@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import fsSync from 'fs';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -12,13 +13,32 @@ import multer from 'multer';
 import fetch from 'node-fetch';
 
 import User from '../models/User.js';
+import { sendOtpEmail } from './emailService.js';
 
 const router = express.Router();
+
+// In-memory OTP store: email -> { otpHash, expiresAt, attempts }
+// Fine for a single-instance deploy (this app's scale); would need a shared
+// store (Mongo/Redis) if the backend ever runs multiple instances.
+const passwordResets = new Map();
+const OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const MAX_OTP_ATTEMPTS = 5;
+
+function hashOtp(otp) {
+  return crypto.createHash('sha256').update(otp).digest('hex');
+}
+
+function generateOtp() {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.resolve(__dirname, '../../data');
 const localUsersFile = path.join(dataDir, 'users.json');
 const uploadsDir = path.resolve(__dirname, '../../uploads');
 const googleClient = new OAuth2Client();
+
+// Profile image uploads and the public /uploads route share this directory.
+fsSync.mkdirSync(uploadsDir, { recursive: true });
 
 const upload = multer({
   storage: multer.diskStorage({
@@ -29,6 +49,12 @@ const upload = multer({
     },
   }),
   limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype?.startsWith('image/')) {
+      return cb(null, true);
+    }
+    cb(new Error('Profile images must be an image file.'));
+  },
 });
 
 function isMongoReady() {
@@ -295,12 +321,71 @@ router.patch('/profile/cover-photo', requireAuth, upload.single('photo'), async 
   }
 });
 
-router.post('/forgot-password', (_req, res) => {
-  res.json({ message: 'If that email exists, a reset code was sent.' });
+router.post('/forgot-password', async (req, res) => {
+  const email = normalizeEmail(req.body.email);
+
+  try {
+    const user = await findUserByEmail(email);
+    if (user) {
+      const otp = generateOtp();
+      passwordResets.set(email, {
+        otpHash: hashOtp(otp),
+        expiresAt: Date.now() + OTP_TTL_MS,
+        attempts: 0,
+      });
+      await sendOtpEmail(email, otp);
+    }
+  } catch (err) {
+    // Never let a lookup/send failure leak whether the account exists.
+    console.error('forgot-password error:', err?.message || err);
+  }
+
+  // Always generic, whether or not the account exists or the email sent.
+  res.json({ message: 'If that email is registered, a code was sent.' });
 });
 
-router.post('/reset-password', (_req, res) => {
-  res.json({ message: 'Password reset is not configured for the local backend.' });
+router.post('/reset-password', async (req, res) => {
+  const email = normalizeEmail(req.body.email);
+  const otp = String(req.body.token || '').trim();
+  const newPassword = String(req.body.newPassword || '');
+
+  if (!email || !otp || newPassword.length < 6) {
+    return res.status(400).json({ message: 'Enter the code and a password with at least 6 characters.' });
+  }
+
+  const record = passwordResets.get(email);
+  if (!record) {
+    return res.status(400).json({ message: 'Invalid or expired code.' });
+  }
+  if (Date.now() > record.expiresAt) {
+    passwordResets.delete(email);
+    return res.status(400).json({ message: 'Invalid or expired code.' });
+  }
+  if (record.attempts >= MAX_OTP_ATTEMPTS) {
+    passwordResets.delete(email);
+    return res.status(429).json({ message: 'Too many attempts. Request a new code.' });
+  }
+  if (hashOtp(otp) !== record.otpHash) {
+    record.attempts += 1;
+    return res.status(400).json({ message: 'Invalid or expired code.' });
+  }
+
+  try {
+    const user = await findUserByEmail(email);
+    if (!user) {
+      passwordResets.delete(email);
+      return res.status(400).json({ message: 'Invalid or expired code.' });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
+    await updateLocalUser(String(user.id || user._id), { password: hashedPassword });
+    passwordResets.delete(email);
+
+    res.json({ message: 'Password updated.' });
+  } catch (err) {
+    console.error('reset-password error:', err?.message || err);
+    res.status(500).json({ message: 'Could not reset password. Please try again.' });
+  }
 });
 
 router.post('/google/mobile', async (req, res, next) => {
@@ -373,7 +458,3 @@ router.post('/facebook/mobile', async (req, res, next) => {
 });
 
 export default router;
-
-
-
-
