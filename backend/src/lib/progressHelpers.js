@@ -47,9 +47,11 @@ function defaultProgress() {
       basic_word: [],
     },
     games_played: 0,
+    game_counts: {},
     seconds_spent: 0,
     streak_days: 0,
     last_active_date: null,
+    daily_reset_date: todayDateString(),
     monthly_events: {},
   };
 }
@@ -63,12 +65,17 @@ export function normalizeProgress(raw) {
   progress.learned.number = uniqueStrings(learned.number);
   progress.learned.basic_word = uniqueStrings(learned.basic_word);
   progress.games_played = Math.max(0, Number(raw.games_played || 0));
+  progress.game_counts = normalizeCounts(raw.game_counts);
   progress.seconds_spent = Math.max(0, Number(raw.seconds_spent || 0));
   progress.streak_days = Math.max(0, Number(raw.streak_days || 0));
   progress.last_active_date =
     typeof raw.last_active_date === 'string' && raw.last_active_date
       ? raw.last_active_date
       : null;
+  progress.daily_reset_date =
+    typeof raw.daily_reset_date === 'string' && raw.daily_reset_date
+      ? raw.daily_reset_date
+      : progress.last_active_date;
   progress.monthly_events = normalizeMonthlyEvents(raw.monthly_events);
   return progress;
 }
@@ -92,16 +99,47 @@ function normalizeMonthlyEvents(value) {
   return normalized;
 }
 
+function normalizeCounts(value) {
+  if (value instanceof Map) {
+    value = Object.fromEntries(value);
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const normalized = {};
+  for (const [key, count] of Object.entries(value)) {
+    const cleanKey = String(key || '').trim();
+    if (!cleanKey) continue;
+    normalized[cleanKey] = Math.max(0, Number(count || 0));
+  }
+  return normalized;
+}
+
 function todayDateString(now = new Date()) {
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Manila',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(now);
+  const year = parts.find((part) => part.type === 'year')?.value || now.getFullYear();
+  const month =
+    parts.find((part) => part.type === 'month')?.value ||
+    String(now.getMonth() + 1).padStart(2, '0');
+  const day =
+    parts.find((part) => part.type === 'day')?.value ||
+    String(now.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
 
 function monthBucket(now = new Date()) {
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Manila',
+    year: 'numeric',
+    month: '2-digit',
+  }).formatToParts(now);
+  const year = parts.find((part) => part.type === 'year')?.value || now.getFullYear();
+  const month =
+    parts.find((part) => part.type === 'month')?.value ||
+    String(now.getMonth() + 1).padStart(2, '0');
   return `${year}-${month}`;
 }
 
@@ -124,6 +162,22 @@ function updateStreak(progress, now = new Date()) {
   }
 
   progress.last_active_date = today;
+  return progress;
+}
+
+function resetDailyProgress(progress, now = new Date()) {
+  const today = todayDateString(now);
+  const hasInvalidTodaySeconds = progress.seconds_spent >= 24 * 60 * 60;
+  if (progress.daily_reset_date === today && !hasInvalidTodaySeconds) {
+    return progress;
+  }
+  progress.learned.alphabet = [];
+  progress.learned.number = [];
+  progress.learned.basic_word = [];
+  progress.games_played = 0;
+  progress.game_counts = {};
+  progress.seconds_spent = 0;
+  progress.daily_reset_date = today;
   return progress;
 }
 
@@ -183,6 +237,27 @@ function buildUsage(progress) {
   return usage.filter((item) => item.count > 0);
 }
 
+function buildGameBreakdown(progress) {
+  const knownCount =
+    (progress.game_counts.guess_asl || 0) +
+    (progress.game_counts.guess_me || 0) +
+    (progress.game_counts.calculator || 0) +
+    (progress.game_counts.game || 0);
+  const legacyCount = Math.max(0, progress.games_played - knownCount);
+  const labels = {
+    guess_asl: 'Guess ASL',
+    guess_me: 'Guess Me',
+    calculator: 'Calculator',
+  };
+  return Object.entries(labels).map(([key, label]) => ({
+    key,
+    label,
+    count:
+      (progress.game_counts[key] || 0) +
+      (key === 'guess_asl' ? legacyCount + (progress.game_counts.game || 0) : 0),
+  }));
+}
+
 function buildMonthlyActivity(progress, now = new Date()) {
   const points = [];
   for (let offset = 4; offset >= 0; offset -= 1) {
@@ -197,7 +272,7 @@ function buildMonthlyActivity(progress, now = new Date()) {
 }
 
 export async function buildProgressResponse(user, now = new Date()) {
-  const progress = normalizeProgress(user.progress);
+  const progress = prepareProgressForToday(user.progress, now);
   const totalSigns = await loadTotalSigns();
   const signsLearned =
     progress.learned.alphabet.length +
@@ -213,13 +288,18 @@ export async function buildProgressResponse(user, now = new Date()) {
       streak_days: progress.streak_days,
     },
     usage: buildUsage(progress),
+    game_breakdown: buildGameBreakdown(progress),
     monthly_activity: buildMonthlyActivity(progress, now),
     updated_at: user.updatedAt || user.updated_at || new Date().toISOString(),
   };
 }
 
+export function prepareProgressForToday(raw, now = new Date()) {
+  return resetDailyProgress(normalizeProgress(raw), now);
+}
+
 export function recordProgressActivity(user, payload, now = new Date()) {
-  const progress = normalizeProgress(user.progress);
+  const progress = resetDailyProgress(normalizeProgress(user.progress), now);
   const category = String(payload.category || '').trim();
   const itemKey = String(payload.item_key || payload.itemKey || '').trim();
   const secondsSpent = Math.max(0, Math.min(24 * 60 * 60, Number(payload.seconds_spent || 0)));
@@ -237,6 +317,8 @@ export function recordProgressActivity(user, payload, now = new Date()) {
   if (category === 'game') {
     if (gameCompleted) {
       progress.games_played += 1;
+      const gameKey = itemKey || 'game';
+      progress.game_counts[gameKey] = (progress.game_counts[gameKey] || 0) + 1;
       activityRecorded = true;
     }
   } else if (category === 'detector') {

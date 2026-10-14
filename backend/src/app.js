@@ -18,6 +18,7 @@ import panoramaRoutes from './routes/panoramaRoutes.js';
 import progressRoutes from './routes/progressRoutes.js';
 import mediaRoutes from './routes/mediaRoutes.js';
 import uploadRoutes from './routes/uploadRoutes.js';
+import adminAnalyticsRoutes from './routes/adminAnalyticsRoutes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '..');
@@ -100,6 +101,7 @@ export function createApp(options = {}) {
   app.use('/auth', authRoutes);
   app.use('/media', mediaRoutes);
   app.use('/progress', progressRoutes);
+  app.use('/admin', adminAnalyticsRoutes);
   app.use('/admin/uploads', uploadRoutes);
   app.use('/alphabet-signs', alphabetRoutes);
   app.use('/basic-words', basicWordRoutes);
@@ -108,6 +110,12 @@ export function createApp(options = {}) {
 
   app.use((err, _req, res, _next) => {
     console.error(err);
+    if (err?.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({ message: 'Profile images must be 5 MB or smaller.' });
+    }
+    if (err?.message === 'Profile images must be an image file.') {
+      return res.status(400).json({ message: err.message });
+    }
     res.status(500).json({ message: 'Server error.' });
   });
 

@@ -10,6 +10,7 @@ import User from '../models/User.js';
 import {
   buildProgressResponse,
   normalizeProgress,
+  prepareProgressForToday,
   recordProgressActivity,
 } from '../lib/progressHelpers.js';
 
@@ -89,8 +90,12 @@ async function requireAuth(req, res, next) {
 router.get('/', requireAuth, async (req, res, next) => {
   try {
     const user = req.user;
-    if (!user.progress) {
-      const progress = normalizeProgress(null);
+    const preparedProgress = prepareProgressForToday(user.progress);
+    if (
+      !user.progress ||
+      JSON.stringify(normalizeProgress(user.progress)) !== JSON.stringify(preparedProgress)
+    ) {
+      const progress = preparedProgress;
       const updated = await updateUserProgress(String(user.id || user._id), progress);
       req.user = updated || { ...user, progress };
     }
