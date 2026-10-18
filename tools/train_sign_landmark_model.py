@@ -101,16 +101,28 @@ def main() -> None:
     x = np.asarray(features, dtype=np.float32)
     y = np.asarray([label_to_index[label] for label in labels], dtype=np.int64)
 
-    indices = np.arange(len(x))
-    np.random.shuffle(indices)
-    x = x[indices]
-    y = y[indices]
+    # Split each label independently. A global random split can place all
+    # samples for a small class in validation, leaving the model unable to
+    # learn that sign at all.
+    train_indices: list[int] = []
+    validation_indices: list[int] = []
+    for label_index in range(len(label_names)):
+        label_indices = np.flatnonzero(y == label_index)
+        np.random.shuffle(label_indices)
+        validation_count = (
+            max(1, int(len(label_indices) * args.validation_split))
+            if len(label_indices) >= 5
+            else 0
+        )
+        validation_indices.extend(label_indices[:validation_count])
+        train_indices.extend(label_indices[validation_count:])
 
-    validation_count = max(1, int(len(x) * args.validation_split))
-    x_val = x[:validation_count]
-    y_val = y[:validation_count]
-    x_train = x[validation_count:]
-    y_train = y[validation_count:]
+    np.random.shuffle(train_indices)
+    np.random.shuffle(validation_indices)
+    x_train = x[train_indices]
+    y_train = y[train_indices]
+    x_val = x[validation_indices]
+    y_val = y[validation_indices]
 
     model = tf.keras.Sequential(
         [
@@ -138,7 +150,7 @@ def main() -> None:
     history = model.fit(
         x_train,
         y_train,
-        validation_data=(x_val, y_val),
+        validation_data=(x_val, y_val) if len(x_val) else None,
         epochs=args.epochs,
         batch_size=args.batch_size,
         callbacks=callbacks,

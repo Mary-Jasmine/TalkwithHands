@@ -67,7 +67,7 @@ class _CalculatorGamePageState extends State<CalculatorGamePage> {
 
   void _newRound() {
     final random = math.Random();
-    final operator = ['+', '-', 'x', '%'][random.nextInt(4)];
+    final operator = ['+', '-', 'x', '÷'][random.nextInt(4)];
     late final int left;
     late final int right;
     switch (operator) {
@@ -84,7 +84,7 @@ class _CalculatorGamePageState extends State<CalculatorGamePage> {
         right = random.nextInt(10) + 1;
         left = right * random.nextInt(11);
     }
-    _roundEquation = '$left $operator $right = ?';
+    _roundEquation = '$left $operator $right =';
     _secondsLeft = 15;
   }
 
@@ -245,7 +245,7 @@ class _CalculatorGamePageState extends State<CalculatorGamePage> {
       '+' => left + right,
       '-' => left - right,
       'x' => left * right,
-      '%' => right == 0 ? double.nan : left / right,
+      '÷' => right == 0 ? double.nan : left / right,
       _ => right,
     };
 
@@ -573,8 +573,8 @@ class _CalculatorGamePageState extends State<CalculatorGamePage> {
 
   Widget _buildEquationCard() {
     return Container(
-      width: 224,
-      height: 106,
+      width: 320,
+      height: 116,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: const Color(0xFF1268EA),
@@ -589,12 +589,26 @@ class _CalculatorGamePageState extends State<CalculatorGamePage> {
               fontWeight: FontWeight.w900,
             )),
         const SizedBox(height: 5),
-        Text(_roundEquation,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 30,
-              fontWeight: FontWeight.w900,
-            )),
+        Row(mainAxisSize: MainAxisSize.min, children: [
+          Text(_roundEquation,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 30,
+                fontWeight: FontWeight.w900,
+              )),
+          const SizedBox(width: 8),
+          Container(
+            width: 58,
+            height: 42,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFB20D),
+              borderRadius: BorderRadius.circular(11),
+              border: Border.all(color: const Color(0xFFFFD43B), width: 2),
+            ),
+            child: const SizedBox.shrink(),
+          ),
+        ]),
       ]),
     );
   }
@@ -631,8 +645,8 @@ class _CalculatorGamePageState extends State<CalculatorGamePage> {
 
   Widget _buildWebStage() {
     return Container(
-      width: 224,
-      height: 224,
+      width: 320,
+      height: 320,
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: const Color(0xFFFFA000),
@@ -652,7 +666,7 @@ class _CalculatorGamePageState extends State<CalculatorGamePage> {
 
   Widget _buildCalculator() {
     const rows = [
-      ['AC', 'DEL', '%', 'x'],
+      ['AC', 'DEL', '÷', 'x'],
       ['7', '8', '9', ''],
       ['4', '5', '6', '-'],
       ['3', '2', '1', '+'],
@@ -937,7 +951,7 @@ class _CalcButton extends StatelessWidget {
   });
 
   bool get _filled =>
-      const {'AC', 'DEL', '%', 'x', '-', '+', '='}.contains(label);
+      const {'AC', 'DEL', '÷', 'x', '-', '+', '='}.contains(label);
 
   @override
   Widget build(BuildContext context) {

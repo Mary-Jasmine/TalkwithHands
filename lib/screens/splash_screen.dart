@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../services/background_music_service.dart';
 import '../ui/background_music_region.dart';
+import 'admin_analytics_screen.dart';
 import '../ui/app_shell.dart';
 import 'landing_screen.dart';
 import 'welcome_screen.dart';
@@ -68,12 +69,16 @@ class _SplashScreenState extends State<SplashScreen>
     if (!mounted) return;
 
     final profile = me ?? cachedProfile;
+    final isAdmin =
+        profile?.email?.trim().toLowerCase() == 'talkwithhands06@gmail.com';
 
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
         builder: (_) => !hasSession && profile == null
             ? const LandingScreen()
-            : WelcomeScreen(userName: profile?.username ?? 'Student'),
+            : isAdmin
+                ? AdminAnalyticsScreen(userName: profile?.username ?? 'Admin')
+                : WelcomeScreen(userName: profile?.username ?? 'Student'),
       ),
     );
   }
@@ -91,71 +96,86 @@ class _SplashScreenState extends State<SplashScreen>
       body: BackgroundMusicRegion(
         track: BackgroundMusicTrack.page,
         showToggle: false,
-        child: AppBackground(
-          imageAsset: 'assets/images/home_bg_clean.png',
-          child: Center(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final stacked = constraints.maxWidth < 500;
-                final logoSize = constraints.maxWidth < 360 ? 92.0 : 110.0;
-                final textSize = constraints.maxWidth < 360 ? 30.0 : 40.0;
-
-                return AnimatedBuilder(
-                  animation: _controller,
-                  builder: (context, child) {
-                    final logo = Transform.scale(
-                      scale: _logoScale.value,
-                      child: AppLogo(size: logoSize),
-                    );
-                    final title = FadeTransition(
-                      opacity: _textOpacity,
-                      child: SlideTransition(
-                        position: _textOffset,
-                        child: Text(
-                          'Talk with Hands',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: textSize,
-                            fontWeight: FontWeight.w900,
-                            fontFamily: 'Georgia',
-                            shadows: const [
-                              Shadow(
-                                color: Color(0x77000000),
-                                offset: Offset(0, 6),
-                                blurRadius: 10,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    );
-
-                    if (stacked) {
-                      return Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          logo,
-                          const SizedBox(height: 16),
-                          title,
-                        ],
-                      );
-                    }
-
-                    return Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        logo,
-                        const SizedBox(width: 18),
-                        title,
-                      ],
-                    );
-                  },
-                );
-              },
-            ),
-          ),
+        child: ColoredBox(
+          color: Colors.black,
+          child: _buildSplashContent(),
         ),
+      ),
+    );
+  }
+
+  Widget _buildSplashContent() {
+    return Center(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final stacked = constraints.maxWidth < 500;
+          final logoSize = constraints.maxWidth < 360 ? 92.0 : 110.0;
+          final textSize = constraints.maxWidth < 360 ? 22.0 : 29.0;
+          return AnimatedBuilder(
+            animation: _controller,
+            builder: (context, child) {
+              final logo = Transform.scale(
+                scale: _logoScale.value,
+                child: Container(
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Color(0x88FFFFFF),
+                        blurRadius: 14,
+                        spreadRadius: 1,
+                      ),
+                    ],
+                  ),
+                  child: AppLogo(size: logoSize),
+                ),
+              );
+              final title = FadeTransition(
+                opacity: _textOpacity,
+                child: SlideTransition(
+                  position: _textOffset,
+                  child: Text(
+                    'Talk with Hands',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: textSize,
+                      fontWeight: FontWeight.w600,
+                      fontFamily: 'Georgia',
+                      shadows: const [
+                        Shadow(
+                          color: Color(0x66FFFFFF),
+                          offset: Offset(0, 1),
+                          blurRadius: 7,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+
+              if (stacked) {
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    logo,
+                    const SizedBox(height: 16),
+                    title,
+                  ],
+                );
+              }
+
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  logo,
+                  const SizedBox(width: 18),
+                  title,
+                ],
+              );
+            },
+          );
+        },
       ),
     );
   }

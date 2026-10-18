@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../models/user_profile.dart';
+import '../services/api_config.dart';
+import '../services/activity_time_service.dart';
 import '../services/auth_service.dart';
 import '../ui/app_shell.dart';
 import '../widgets/transparent_sign_video_overlay.dart';
@@ -252,6 +254,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _logout() async {
+    await ActivityTimeService.instance.prepareForAccountChange();
     await AuthService().logout();
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
@@ -282,195 +285,147 @@ class _SettingsScreenState extends State<SettingsScreen> {
         activeScreen: 'Settings',
       ),
       body: AppBackground(
-        child: SafeArea(
-          child: _loading
-              ? const Center(child: CircularProgressIndicator(color: _kPrimary))
-              : LayoutBuilder(builder: (context, constraints) {
-                  final wide = constraints.maxWidth >= 720;
-                  return Column(children: [
-                    _TopBar(
-                      onBack: () => Navigator.of(context).pop(),
-                      onMenu: () => _scaffoldKey.currentState?.openEndDrawer(),
-                    ),
-                    Expanded(
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.fromLTRB(14, 14, 14, 24),
-                        child: Center(
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 980),
-                            child: Column(children: [
-                              _ProfileHero(
-                                photoUrl: _photoUrl,
-                                coverPhotoUrl: _coverPhotoUrl,
-                                displayName: _name.text.trim().isEmpty
-                                    ? 'Student'
-                                    : _name.text.trim(),
-                                uploading: _uploadingPhoto,
-                                uploadingCover: _uploadingCoverPhoto,
-                                onEditPhoto: _pickAndUploadPhoto,
-                                onEditCover: _pickAndUploadCoverPhoto,
-                              ),
-                              const SizedBox(height: 14),
-                              _SettingsCard(
-                                icon: Icons.badge_outlined,
-                                label: 'Account info',
-                                child: _AccountInfoForm(
-                                  email: _email,
-                                  address: _address,
-                                  contact: _contact,
-                                  sex: _sex,
-                                  age: _age,
-                                  onSexChanged: (v) => setState(() => _sex = v),
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              wide
-                                  ? Row(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                          Expanded(
-                                            child: _SettingsCard(
-                                              icon: Icons
-                                                  .manage_accounts_outlined,
-                                              label: 'Display name',
-                                              child: _ProfileDetails(
-                                                  name: _name,
-                                                  onSave: _saveProfile,
-                                                  saving: _savingProfile),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 12),
-                                          Expanded(
-                                            child: _SettingsCard(
-                                              icon: Icons.star_outline_rounded,
-                                              label: 'Rate this app',
-                                              child: _FeedbackPanel(
-                                                userName: _name.text,
-                                                photoUrl: _photoUrl,
-                                                rating: _rating,
-                                                review: _review,
-                                                savedReview: _savedReview,
-                                                savedRating: _savedRating,
-                                                onRatingChanged: (v) =>
-                                                    setState(() => _rating = v),
-                                                onSave: _saveFeedback,
-                                                saving: _savingFeedback,
-                                              ),
-                                            ),
-                                          ),
-                                        ])
-                                  : Column(children: [
-                                      _SettingsCard(
-                                        icon: Icons.manage_accounts_outlined,
-                                        label: 'Display name',
-                                        child: _ProfileDetails(
-                                            name: _name,
-                                            onSave: _saveProfile,
-                                            saving: _savingProfile),
-                                      ),
-                                      const SizedBox(height: 12),
-                                      _SettingsCard(
-                                        icon: Icons.star_outline_rounded,
-                                        label: 'Rate this app',
-                                        child: _FeedbackPanel(
-                                          userName: _name.text,
-                                          photoUrl: _photoUrl,
-                                          rating: _rating,
-                                          review: _review,
-                                          savedReview: _savedReview,
-                                          savedRating: _savedRating,
-                                          onRatingChanged: (v) =>
-                                              setState(() => _rating = v),
-                                          onSave: _saveFeedback,
-                                          saving: _savingFeedback,
-                                        ),
-                                      ),
-                                    ]),
-                              const SizedBox(height: 20),
-                              _LogoutButton(onTap: _logout),
-                            ]),
-                          ),
+        child: _loading
+            ? const Center(child: CircularProgressIndicator(color: _kPrimary))
+            : LayoutBuilder(builder: (context, constraints) {
+                final wide = constraints.maxWidth >= 720;
+                return Column(children: [
+                  AppTopBar(
+                    onBack: () => Navigator.of(context).pop(),
+                    onMenu: () => _scaffoldKey.currentState?.openEndDrawer(),
+                  ),
+
+                  // ── Title ────────────────────────────────────────────────
+                  Transform.translate(
+                    offset: const Offset(0, -25),
+                    child: const Padding(
+                      padding: EdgeInsets.only(top: 0, bottom: 0),
+                      child: Text(
+                        'SETTINGS',
+                        style: TextStyle(
+                          color: Color(0xFF1500C8),
+                          fontSize: 34,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0,
+                          shadows: [
+                            Shadow(
+                              color: Colors.white,
+                              offset: Offset(3, 4),
+                              blurRadius: 6,
+                            ),
+                          ],
                         ),
                       ),
                     ),
-                  ]);
-                }),
-        ),
-      ),
-    );
-  }
-}
-
-// ── Top bar ───────────────────────────────────────────────────────────────────
-class _TopBar extends StatelessWidget {
-  final VoidCallback onBack, onMenu;
-  const _TopBar({required this.onBack, required this.onMenu});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: Colors.transparent,
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 20),
-      child: Row(children: [
-        Container(
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.10),
-                blurRadius: 5,
-                offset: const Offset(1, 2),
-              ),
-              BoxShadow(
-                color: Colors.white.withValues(alpha: 0.10),
-                blurRadius: 2,
-                offset: const Offset(-1, -1),
-              ),
-            ],
-          ),
-          child: Material(
-            color: kAccent,
-            shape: const CircleBorder(),
-            child: InkWell(
-              customBorder: const CircleBorder(),
-              onTap: onBack,
-              child: const SizedBox(
-                width: 47,
-                height: 47,
-                child: Icon(Icons.arrow_back, color: Colors.white, size: 26),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 12),
-        const Expanded(
-          child: Text('SETTINGS',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w900,
-                  color: Color(0xFF1500C8),
-                  shadows: [
-                    Shadow(
-                      color: Colors.white,
-                      offset: Offset(3, 4),
-                      blurRadius: 6,
+                  ),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(14, 2, 14, 24),
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 980),
+                          child: Column(children: [
+                            _ProfileHero(
+                              photoUrl: _photoUrl,
+                              coverPhotoUrl: _coverPhotoUrl,
+                              displayName: _name.text.trim().isEmpty
+                                  ? 'Student'
+                                  : _name.text.trim(),
+                              uploading: _uploadingPhoto,
+                              uploadingCover: _uploadingCoverPhoto,
+                              onEditPhoto: _pickAndUploadPhoto,
+                              onEditCover: _pickAndUploadCoverPhoto,
+                            ),
+                            const SizedBox(height: 14),
+                            _SettingsCard(
+                              icon: Icons.badge_outlined,
+                              label: 'Account info',
+                              child: _AccountInfoForm(
+                                email: _email,
+                                address: _address,
+                                contact: _contact,
+                                sex: _sex,
+                                age: _age,
+                                onSexChanged: (v) => setState(() => _sex = v),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            wide
+                                ? Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                        Expanded(
+                                          child: _SettingsCard(
+                                            icon:
+                                                Icons.manage_accounts_outlined,
+                                            label: 'Display name',
+                                            child: _ProfileDetails(
+                                                name: _name,
+                                                onSave: _saveProfile,
+                                                saving: _savingProfile),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: _SettingsCard(
+                                            icon: Icons.star_outline_rounded,
+                                            label: 'Rate this app',
+                                            child: _FeedbackPanel(
+                                              userName: _name.text,
+                                              photoUrl: _photoUrl,
+                                              rating: _rating,
+                                              review: _review,
+                                              savedReview: _savedReview,
+                                              savedRating: _savedRating,
+                                              onRatingChanged: (v) =>
+                                                  setState(() => _rating = v),
+                                              onSave: _saveFeedback,
+                                              saving: _savingFeedback,
+                                            ),
+                                          ),
+                                        ),
+                                      ])
+                                : Column(children: [
+                                    _SettingsCard(
+                                      icon: Icons.manage_accounts_outlined,
+                                      label: 'Display name',
+                                      child: _ProfileDetails(
+                                          name: _name,
+                                          onSave: _saveProfile,
+                                          saving: _savingProfile),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    _SettingsCard(
+                                      icon: Icons.star_outline_rounded,
+                                      label: 'Rate this app',
+                                      child: _FeedbackPanel(
+                                        userName: _name.text,
+                                        photoUrl: _photoUrl,
+                                        rating: _rating,
+                                        review: _review,
+                                        savedReview: _savedReview,
+                                        savedRating: _savedRating,
+                                        onRatingChanged: (v) =>
+                                            setState(() => _rating = v),
+                                        onSave: _saveFeedback,
+                                        saving: _savingFeedback,
+                                      ),
+                                    ),
+                                  ]),
+                            const SizedBox(height: 20),
+                            _LogoutButton(onTap: _logout),
+                          ]),
+                        ),
+                      ),
                     ),
-                  ])),
-        ),
-        Tooltip(
-          message: 'Open menu',
-          child: AppMenuIconButton(onTap: onMenu),
-        ),
-      ]),
+                  ),
+                ]);
+              }),
+      ),
     );
   }
 }
-
-
 
 // ── Profile hero ──────────────────────────────────────────────────────────────
 class _ProfileHero extends StatelessWidget {
@@ -551,13 +506,19 @@ class _ProfileHero extends StatelessWidget {
                     color: _kPrimaryBg,
                   ),
                   child: ClipOval(
-                    child: const TransparentSignVideoOverlay(
-                      videoAsset: 'assets/Set.mp4',
-                      fit: BoxFit.cover,
-                      volume: 0,
-                      threshold: 0.34,
-                      smoothing: 0.08,
-                    ),
+                    child: photoUrl != null && photoUrl!.isNotEmpty
+                        ? _ProfileImage(
+                            value: photoUrl!,
+                            fit: BoxFit.cover,
+                            fallback: 'assets/images/app_logo.png',
+                          )
+                        : const TransparentSignVideoOverlay(
+                            videoAsset: 'assets/Set.mp4',
+                            fit: BoxFit.cover,
+                            volume: 0,
+                            threshold: 0.34,
+                            smoothing: 0.08,
+                          ),
                   ),
                 ),
                 Positioned(
@@ -1188,9 +1149,18 @@ class _ProfileImage extends StatelessWidget {
           fit: fit,
           errorBuilder: (_, __, ___) => Image.asset(fallback, fit: fit));
     }
-    return Image.network(value,
+    return Image.network(_networkUrl(value),
         fit: fit,
         errorBuilder: (_, __, ___) => Image.asset(fallback, fit: fit));
+  }
+
+  static String _networkUrl(String value) {
+    if (value.startsWith('http://') || value.startsWith('https://')) {
+      return value;
+    }
+    final baseUrl = ApiConfig.baseUrl;
+    if (baseUrl.isEmpty) return value;
+    return value.startsWith('/') ? '$baseUrl$value' : '$baseUrl/$value';
   }
 
   static Uint8List? _decodeDataUri(String v) {

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:camera/camera.dart';
@@ -21,17 +22,18 @@ const Color kRed = Color(0xFFFF4D6A);
 const Color kOrange = Color(0xFFFF9500);
 
 // ─── Static labels (snapshot) ─────────────────────────────────────────────────
-const List<String> kStaticLabels = [
+const List<String> kFallbackStaticLabels = [
   'A','B','C','D','E','F','G','H','I',
   'K','L','M','N','O','P','Q','R','S','T',
   'U','V','W','X','Y',
   '0','1','2','3','4','5','6','7','8','9',
+  '10','11','12','13','14','15','16','17','18','19','20',
   'yes','no','stop','more','need','want',
   'good','bad','love','me','you','i',
 ];
 
 // ─── Dynamic labels (sequence) ────────────────────────────────────────────────
-const List<String> kDynamicLabels = [
+const List<String> kFallbackDynamicLabels = [
   'J','Z',
   'hello','thank you','please','sorry',
   'help','come','go','eat','drink','water',
@@ -81,17 +83,20 @@ class _DataCollectionScreenState extends State<DataCollectionScreen>
   List<HandLandmark>? _handLandmarks;
   Size? _displayPreviewSize;
   int _sensorOrientation = 0;
+  List<String> _staticLabels = kFallbackStaticLabels;
+  List<String> _dynamicLabels = kFallbackDynamicLabels;
+  String _staticSearchQuery = '';
 
   // Collection mode
   _CollectMode _collectMode = _CollectMode.static_;
 
   // Static state
-  String _staticLabel = kStaticLabels.first;
+  String _staticLabel = kFallbackStaticLabels.first;
   bool _staticRecording = false;
   DateTime _lastStaticCapture = DateTime.fromMillisecondsSinceEpoch(0);
 
   // Sequence state
-  String _seqLabel = kDynamicLabels.first;
+  String _seqLabel = kFallbackDynamicLabels.first;
   bool _seqRecording = false;
   DateTime _lastSeqFrame = DateTime.fromMillisecondsSinceEpoch(0);
   final List<List<HandLandmark>> _seqBuffer = [];
@@ -140,8 +145,61 @@ class _DataCollectionScreenState extends State<DataCollectionScreen>
       setState(() { _loadText = 'Android device required.'; _loading = false; });
       return;
     }
+    await _loadCollectionLabels();
     await _resolvePaths();
     await _requestCamera();
+  }
+
+  Future<void> _loadCollectionLabels() async {
+    try {
+      final raw = await rootBundle.loadString('backend/data/basic-words.json');
+      final data = jsonDecode(raw);
+      if (data is! List) return;
+
+      final numbers = <String>{
+        for (var number = 0; number <= 20; number++) number.toString(),
+      };
+      final basicWords = <String>{};
+      for (final item in data.whereType<Map>()) {
+        final category = (item['category'] ?? '').toString().trim().toLowerCase();
+        final title = (item['title'] ?? '').toString().trim();
+        if (title.isEmpty) continue;
+        if (category == 'alphabet') continue;
+        if (category == 'number' || category == 'numbers') {
+          numbers.add(title);
+        } else {
+          basicWords.add(title);
+        }
+      }
+
+      final sortedNumbers = numbers.toList()
+        ..sort((a, b) {
+          final left = int.tryParse(a);
+          final right = int.tryParse(b);
+          if (left != null && right != null) return left.compareTo(right);
+          return a.compareTo(b);
+        });
+      final sortedBasicWords = basicWords.toList()
+        ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+
+      if (sortedBasicWords.isEmpty || !mounted) return;
+      setState(() {
+        _staticLabels = [
+          ...kFallbackStaticLabels.where((label) => int.tryParse(label) == null),
+          ...sortedNumbers,
+          ...sortedBasicWords,
+        ];
+        _dynamicLabels = ['J', 'Z', ...sortedBasicWords];
+        if (!_staticLabels.contains(_staticLabel)) {
+          _staticLabel = _staticLabels.first;
+        }
+        if (!_dynamicLabels.contains(_seqLabel)) {
+          _seqLabel = _dynamicLabels.first;
+        }
+      });
+    } catch (e) {
+      debugPrint('Collection label load error: $e');
+    }
   }
 
   Future<void> _resolvePaths() async {
@@ -501,7 +559,7 @@ class _DataCollectionScreenState extends State<DataCollectionScreen>
     child: Row(children: [
       _ModeTab(
         label: '📸  Static signs',
-        subtitle: 'A–Z, 0–9, yes, no…',
+        subtitle: 'A-Z, 0-20, yes, no...',
         active: _collectMode == _CollectMode.static_,
         color: kTeal,
         onTap: () => setState(() { _collectMode = _CollectMode.static_; _staticRecording = false; _seqRecording = false; }),
@@ -509,7 +567,7 @@ class _DataCollectionScreenState extends State<DataCollectionScreen>
       const SizedBox(width: 8),
       _ModeTab(
         label: '🎬  Motion signs',
-        subtitle: 'hello, thank you…',
+        subtitle: 'Full basic words',
         active: _collectMode == _CollectMode.sequence,
         color: kOrange,
         onTap: () => setState(() { _collectMode = _CollectMode.sequence; _staticRecording = false; _seqRecording = false; }),
@@ -594,15 +652,61 @@ class _DataCollectionScreenState extends State<DataCollectionScreen>
   Widget _buildStaticPanel() {
     final count = _counts[_staticLabel] ?? 0;
     final done = count >= kSamplesPerLabel;
+    final filteredLabels = _staticLabels
+        .where((label) => label
+            .toLowerCase()
+            .contains(_staticSearchQuery.trim().toLowerCase()))
+        .toList();
+
     return _BottomPanel(children: [
-      _LabelPicker(
-        labels: kStaticLabels,
-        selected: _staticLabel,
-        counts: _counts,
-        target: kSamplesPerLabel,
-        accentColor: kTeal,
-        onSelect: (lbl) => setState(() { _staticLabel = lbl; _staticRecording = false; }),
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        decoration: BoxDecoration(
+          color: const Color(0x14FFFFFF),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0x1AFFFFFF), width: 0.5),
+        ),
+        child: Row(children: [
+          const Icon(Icons.search, color: Color(0x66FFFFFF), size: 15),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextField(
+              onChanged: (value) => setState(() => _staticSearchQuery = value),
+              style: const TextStyle(color: Colors.white, fontSize: 12),
+              decoration: const InputDecoration(
+                hintText: 'Search labels...',
+                hintStyle: TextStyle(color: Color(0x66FFFFFF), fontSize: 12),
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: EdgeInsets.symmetric(vertical: 10),
+              ),
+            ),
+          ),
+          if (_staticSearchQuery.trim().isNotEmpty)
+            GestureDetector(
+              onTap: () => setState(() => _staticSearchQuery = ''),
+              child: const Icon(Icons.clear, color: Color(0x99FFFFFF), size: 15),
+            ),
+        ]),
       ),
+      const SizedBox(height: 10),
+      if (filteredLabels.isEmpty)
+        const Padding(
+          padding: EdgeInsets.only(bottom: 8),
+          child: Text(
+            'No matching labels found.',
+            style: TextStyle(color: Color(0x66FFFFFF), fontSize: 12),
+          ),
+        )
+      else
+        _LabelPicker(
+          labels: filteredLabels,
+          selected: _staticLabel,
+          counts: _counts,
+          target: kSamplesPerLabel,
+          accentColor: kTeal,
+          onSelect: (lbl) => setState(() { _staticLabel = lbl; _staticRecording = false; }),
+        ),
       const SizedBox(height: 10),
       _SampleProgress(label: _staticLabel, count: count, target: kSamplesPerLabel, color: kTeal),
       const SizedBox(height: 10),
@@ -648,7 +752,7 @@ class _DataCollectionScreenState extends State<DataCollectionScreen>
     final done = count >= kSamplesPerLabel;
     return _BottomPanel(children: [
       _LabelPicker(
-        labels: kDynamicLabels,
+        labels: _dynamicLabels,
         selected: _seqLabel,
         counts: _counts,
         target: kSamplesPerLabel,

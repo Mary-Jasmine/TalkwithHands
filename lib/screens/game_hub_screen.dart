@@ -25,10 +25,11 @@ class GameHubScreen extends StatefulWidget {
 class _GameHubScreenState extends State<GameHubScreen> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
 
-  Future<void> _recordGameFinished() async {
+  Future<void> _recordGamePlayed(String gameKey) async {
     try {
       await ProgressService().recordActivity(
         category: 'game',
+        itemKey: gameKey,
         gameCompleted: true,
       );
     } catch (_) {
@@ -37,6 +38,7 @@ class _GameHubScreenState extends State<GameHubScreen> {
   }
 
   void _openGuessAsl() {
+    _recordGamePlayed('guess_asl');
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => guess_asl.GameScreen(
@@ -46,20 +48,28 @@ class _GameHubScreenState extends State<GameHubScreen> {
             required score,
             required completed,
             required total,
-          }) {
-            _recordGameFinished();
-          },
+          }) {},
         ),
       ),
     );
   }
 
   void _openGuessMe() {
+    _recordGamePlayed('guess_me');
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => guess_me.GuessMeScreen(
-          onGameFinished: _recordGameFinished,
+          onGameFinished: () {},
         ),
+      ),
+    );
+  }
+
+  void _openCalculator() {
+    _recordGamePlayed('calculator');
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const calculator.CalculatorGamePage(),
       ),
     );
   }
@@ -140,14 +150,7 @@ class _GameHubScreenState extends State<GameHubScreen> {
                                 label: 'Calculator',
                                 subtitle: 'Camera or keypad',
                                 child: const _CalculatorIcon(),
-                                onTap: () {
-                                  Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (_) =>
-                                          const calculator.CalculatorGamePage(),
-                                    ),
-                                  );
-                                },
+                                onTap: _openCalculator,
                               ),
                             ),
                             SizedBox(

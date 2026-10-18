@@ -61,7 +61,7 @@ class _BackgroundMusicRegionState extends State<BackgroundMusicRegion>
   void didPush() => _activate();
 
   @override
-  void didPushNext() => unawaited(BackgroundMusicService.instance.pause());
+  void didPushNext() {}
 
   @override
   void didPopNext() => _activate();

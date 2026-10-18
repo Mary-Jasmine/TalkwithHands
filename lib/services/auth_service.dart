@@ -34,8 +34,8 @@ class AuthService {
     final dio = Dio(
       BaseOptions(
         baseUrl: baseUrl,
-        connectTimeout: const Duration(seconds: 20),
-        receiveTimeout: const Duration(seconds: 20),
+        connectTimeout: const Duration(seconds: 30),
+        receiveTimeout: const Duration(seconds: 90),
         headers: {'Content-Type': 'application/json'},
       ),
     );
@@ -424,9 +424,14 @@ class AuthService {
     if (data is Map && data['message'] != null) {
       return data['message'].toString();
     }
+    if (e.type == DioExceptionType.receiveTimeout) {
+      final baseUrl =
+        ApiConfig.baseUrl.isEmpty ? 'the API server' : ApiConfig.baseUrl;
+      return 'The auth server at $baseUrl took too long to respond. '
+        'Wait a minute for it to wake up, then try again.';
+    }
     if (e.type == DioExceptionType.connectionTimeout ||
-        e.type == DioExceptionType.receiveTimeout ||
-        e.type == DioExceptionType.connectionError) {
+      e.type == DioExceptionType.connectionError) {
       final baseUrl =
           ApiConfig.baseUrl.isEmpty ? 'the API server' : ApiConfig.baseUrl;
       return 'Cannot reach the auth server at $baseUrl. '

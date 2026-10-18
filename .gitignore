@@ -64,3 +64,5 @@ uploads/
 
 # Builds
 dist/
+
+android/build/

@@ -17,7 +17,7 @@ class SignDetectorScreen extends StatelessWidget {
     this.initialMode = DetectionMode.words,
     this.lockMode = false,
     this.captureKind = CaptureKind.video,
-    this.title = 'Talk With Hands',
+    this.title = 'SIGN TO TEXT',
   });
 
   @override
@@ -73,7 +73,7 @@ class SignDetectorScreen extends StatelessWidget {
                     const SizedBox(width: 12),
                     const Expanded(
                       child: Text(
-                        'Sign to Text',
+                        'SIGN TO TEXT',
                         style: TextStyle(
                           color: Colors.white,
                           fontSize: 18,

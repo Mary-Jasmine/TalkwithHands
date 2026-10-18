@@ -380,6 +380,7 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
                     ),
                   ),
 
+                  const SizedBox(height: 14), // lowers Basic.mp4 a bit
                   const SizedBox(
                     height: 120,
                     width: 240,
@@ -392,7 +393,7 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
                     ),
                   ),
 
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 2),
 
                   // ── Main content ──────────────────────────────────────────
                   Expanded(

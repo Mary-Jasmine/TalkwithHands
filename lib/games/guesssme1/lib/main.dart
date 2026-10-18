@@ -1503,7 +1503,7 @@ class _DefeatScreenState extends State<DefeatScreen> with TickerProviderStateMix
                         ),
                       ),
                       const SizedBox(height: 20),
-                      const Text('DEFEATED',
+                      const Text('LOSE',
                         style: TextStyle(
                           color: Colors.white, fontSize: 42,
                           fontWeight: FontWeight.w900, letterSpacing: 4,

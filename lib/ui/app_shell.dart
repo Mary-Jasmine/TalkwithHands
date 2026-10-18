@@ -13,6 +13,8 @@ import '../screens/panorama_screen.dart'; // add at top
 import '../screens/progress_screen.dart';
 import '../screens/settings_screen.dart';
 import '../screens/sign_detector_screen.dart';
+import '../screens/landing_screen.dart';
+import '../services/activity_time_service.dart';
 import '../services/auth_service.dart';
 
 const Color kAccent = Color(0xFF39D8E8);
@@ -205,7 +207,10 @@ class AppTopBar extends StatelessWidget {
             ] else
               const Spacer(),
             if (onMenu != null)
-              AppMenuIconButton(onTap: onMenu!)
+              AppMenuIconButton(
+                onTap: onMenu!,
+                size: logoSize,
+              )
             else
               SizedBox(width: sideSlot),
           ],
@@ -234,6 +239,7 @@ class AppMenuDrawer extends StatefulWidget {
 class _AppMenuDrawerState extends State<AppMenuDrawer> {
   static const _adminEmail = 'talkwithhands06@gmail.com';
   bool _isAdmin = false;
+  bool _adminStatusLoaded = false;
 
   @override
   void initState() {
@@ -242,11 +248,34 @@ class _AppMenuDrawerState extends State<AppMenuDrawer> {
   }
 
   Future<void> _loadAdminStatus() async {
+    final cached = await AuthService.cachedProfile();
+    if (mounted && _isAdminProfile(cached)) {
+      setState(() {
+        _isAdmin = true;
+        _adminStatusLoaded = true;
+      });
+    }
+
     final profile = await AuthService().me();
     if (!mounted) return;
     setState(() {
-      _isAdmin = profile?.email?.trim().toLowerCase() == _adminEmail;
+      _isAdmin = _isAdminProfile(profile) || _isAdmin;
+      _adminStatusLoaded = true;
     });
+  }
+
+  bool _isAdminProfile(dynamic profile) {
+    return profile?.email?.trim().toLowerCase() == _adminEmail;
+  }
+
+  Future<void> _logout() async {
+    await ActivityTimeService.instance.prepareForAccountChange();
+    await AuthService().logout();
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LandingScreen()),
+      (_) => false,
+    );
   }
 
   @override
@@ -315,11 +344,9 @@ class _AppMenuDrawerState extends State<AppMenuDrawer> {
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xFF39D8E8)
-                                  .withValues(alpha: 0.65),
-                              blurRadius: 16,
-                              spreadRadius: 1,
-                              offset: const Offset(0, 3),
+                              color: Colors.black.withValues(alpha: 0.14),
+                              blurRadius: 5,
+                              offset: const Offset(0, 2),
                             ),
                           ],
                         ),
@@ -353,7 +380,8 @@ class _AppMenuDrawerState extends State<AppMenuDrawer> {
                             Text(
                               'LEARN • PRACTICE • CONNECT',
                               style: TextStyle(
-                                color: kAccent.withValues(alpha: 0.95),
+                                color: const Color.fromARGB(255, 254, 254, 254)
+                                    .withValues(alpha: 0.95),
                                 fontSize: 10,
                                 fontWeight: FontWeight.w800,
                                 letterSpacing: 1.6,
@@ -396,8 +424,8 @@ class _AppMenuDrawerState extends State<AppMenuDrawer> {
                   // User greeting pill
                   Container(
                     margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 8),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
@@ -479,22 +507,21 @@ class _AppMenuDrawerState extends State<AppMenuDrawer> {
                       ),
                     ),
                   ),
-                  _SectionLabel(label: 'MAIN'),
-                  _MenuTile(
-                    icon: Icons.bar_chart_rounded,
-                    title: 'Progress',
-                    active: widget.activeScreen == 'Progress',
-                    onTap: () {
-                      Navigator.of(context).pop();
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              ProgressScreen(userName: widget.userName),
-                        ),
-                      );
-                    },
+                  _SectionLabel(
+                    label: !_adminStatusLoaded
+                        ? 'MENU'
+                        : _isAdmin
+                            ? 'ADMIN'
+                            : 'MAIN',
                   ),
-                  if (_isAdmin)
+                  if (!_adminStatusLoaded)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 24),
+                      child: Center(
+                        child: CircularProgressIndicator(color: Colors.white),
+                      ),
+                    )
+                  else if (_isAdmin) ...[
                     _MenuTile(
                       icon: Icons.analytics_rounded,
                       title: 'Analytics',
@@ -509,135 +536,190 @@ class _AppMenuDrawerState extends State<AppMenuDrawer> {
                         );
                       },
                     ),
-                  if (_isAdmin)
                     _MenuTile(
-                      icon: Icons.admin_panel_settings_rounded,
-                      title: 'Admin Panel',
-                      active: widget.activeScreen == 'Admin Panel',
+                      icon: Icons.sort_by_alpha_rounded,
+                      title: 'Alphabets',
+                      active: widget.activeScreen == 'ALPHABETS',
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => AdminContentScreen(
+                              userName: widget.userName,
+                              initialTab: AdminContentTab.alphabets,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    _MenuTile(
+                      icon: Icons.pin_rounded,
+                      title: 'Numbers',
+                      active: widget.activeScreen == 'NUMBERS',
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => AdminContentScreen(
+                              userName: widget.userName,
+                              initialTab: AdminContentTab.numbers,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    _MenuTile(
+                      icon: Icons.book_rounded,
+                      title: 'Basic Words',
+                      active: widget.activeScreen == 'BASIC WORDS',
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => AdminContentScreen(
+                              userName: widget.userName,
+                              initialTab: AdminContentTab.basicWords,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    _MenuTile(
+                      icon: Icons.logout_rounded,
+                      title: 'Log out',
+                      onTap: _logout,
+                    ),
+                  ] else ...[
+                    _MenuTile(
+                      icon: Icons.bar_chart_rounded,
+                      title: 'Progress',
+                      active: widget.activeScreen == 'Progress',
                       onTap: () {
                         Navigator.of(context).pop();
                         Navigator.of(context).push(
                           MaterialPageRoute(
                             builder: (_) =>
-                                AdminContentScreen(userName: widget.userName),
+                                ProgressScreen(userName: widget.userName),
                           ),
                         );
                       },
                     ),
-                  SizedBox(height: compact ? 4 : 8),
-                  _SectionLabel(label: 'LEARN & PRACTICE'),
-                  _MenuTile(
-                    icon: Icons.sort_by_alpha_rounded,
-                    title: 'Alphabets',
-                    active: widget.activeScreen == 'Alphabets',
-                    onTap: () {
-                      Navigator.of(context).pop();
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              AlphabetsScreen(userName: widget.userName),
-                        ),
-                      );
-                    },
-                  ),
-                  _MenuTile(
-                    icon: Icons.pin_rounded,
-                    title: 'Numbers',
-                    active: widget.activeScreen == 'Numbers',
-                    onTap: () {
-                      Navigator.of(context).pop();
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              NumbersScreen(userName: widget.userName),
-                        ),
-                      );
-                    },
-                  ),
-                  _MenuTile(
-                    icon: Icons.book_rounded,
-                    title: 'Basic Words',
-                    active: widget.activeScreen == 'Basic Words',
-                    onTap: () {
-                      Navigator.of(context).pop();
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              BasicWordsScreen(userName: widget.userName),
-                        ),
-                      );
-                    },
-                  ),
-                  _MenuTile(
-                    icon: Icons.pan_tool_alt_rounded,
-                    title: 'Sign to Text',
-                    active: widget.activeScreen == 'Sign to Text',
-                    onTap: () {
-                      Navigator.of(context).pop();
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const SignDetectorScreen(),
-                        ),
-                      );
-                    },
-                  ),
-                  _MenuTile(
-                    icon: Icons.threesixty_rounded,
-                    title: '180 Pictures',
-                    active: widget.activeScreen == '360 Pictures',
-                    onTap: () {
-                      Navigator.of(context).pop();
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              PanoramaScreen(userName: widget.userName),
-                        ),
-                      );
-                    },
-                  ),
-                  _MenuTile(
-                    icon: Icons.sports_esports_rounded,
-                    title: 'Game',
-                    active: widget.activeScreen == 'Game',
-                    onTap: () {
-                      Navigator.of(context).pop();
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              GameHubScreen(userName: widget.userName),
-                        ),
-                      );
-                    },
-                  ),
-                  SizedBox(height: compact ? 6 : 12),
-                  _SectionLabel(label: 'PROFILE'),
-                  _MenuTile(
-                    icon: Icons.settings_rounded,
-                    title: 'Settings',
-                    active: widget.activeScreen == 'Settings',
-                    onTap: () {
-                      Navigator.of(context).pop();
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const SettingsScreen(),
-                        ),
-                      );
-                    },
-                  ),
-                  _MenuTile(
-                    icon: Icons.info_rounded,
-                    title: 'About us',
-                    active: widget.activeScreen == 'About us',
-                    onTap: () {
-                      Navigator.of(context).pop();
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              AboutUsScreen(userName: widget.userName),
-                        ),
-                      );
-                    },
-                  ),
+                    SizedBox(height: compact ? 4 : 8),
+                    _SectionLabel(label: 'LEARN & PRACTICE'),
+                    _MenuTile(
+                      icon: Icons.sort_by_alpha_rounded,
+                      title: 'Alphabets',
+                      active: widget.activeScreen == 'Alphabets',
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                AlphabetsScreen(userName: widget.userName),
+                          ),
+                        );
+                      },
+                    ),
+                    _MenuTile(
+                      icon: Icons.pin_rounded,
+                      title: 'Numbers',
+                      active: widget.activeScreen == 'Numbers',
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                NumbersScreen(userName: widget.userName),
+                          ),
+                        );
+                      },
+                    ),
+                    _MenuTile(
+                      icon: Icons.book_rounded,
+                      title: 'Basic Words',
+                      active: widget.activeScreen == 'Basic Words',
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                BasicWordsScreen(userName: widget.userName),
+                          ),
+                        );
+                      },
+                    ),
+                    _MenuTile(
+                      icon: Icons.pan_tool_alt_rounded,
+                      title: 'Sign to Text',
+                      active: widget.activeScreen == 'Sign to Text',
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const SignDetectorScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                    _MenuTile(
+                      icon: Icons.threesixty_rounded,
+                      title: '180° Pictures',
+                      active: widget.activeScreen == '180 Pictures',
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        if (widget.activeScreen == '180 Pictures') return;
+                        Navigator.of(context).pushReplacement(
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                PanoramaScreen(userName: widget.userName),
+                          ),
+                        );
+                      },
+                    ),
+                    _MenuTile(
+                      icon: Icons.sports_esports_rounded,
+                      title: 'Game',
+                      active: widget.activeScreen == 'Game',
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                GameHubScreen(userName: widget.userName),
+                          ),
+                        );
+                      },
+                    ),
+                    SizedBox(height: compact ? 6 : 12),
+                    _SectionLabel(label: 'PROFILE'),
+                    _MenuTile(
+                      icon: Icons.settings_rounded,
+                      title: 'Settings',
+                      active: widget.activeScreen == 'Settings',
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const SettingsScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                    _MenuTile(
+                      icon: Icons.info_rounded,
+                      title: 'About us',
+                      active: widget.activeScreen == 'About us',
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                AboutUsScreen(userName: widget.userName),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -741,14 +823,9 @@ class AppBackIconButton extends StatelessWidget {
         shape: BoxShape.circle,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.34),
-            blurRadius: 14,
-            offset: const Offset(0, 5),
-          ),
-          BoxShadow(
-            color: kAccent.withValues(alpha: 0.36),
-            blurRadius: 18,
-            spreadRadius: 1,
+            color: Colors.black.withValues(alpha: 0.16),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
@@ -777,61 +854,43 @@ class AppBackIconButton extends StatelessWidget {
 
 class AppMenuIconButton extends StatelessWidget {
   final VoidCallback onTap;
+  final double size;
 
   const AppMenuIconButton({
     super.key,
     required this.onTap,
+    this.size = 64,
   });
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
-      child: Padding(
-        padding: const EdgeInsets.all(8),
-        child: Container(
-          width: 48,
-          height: 40,
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.04),
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color:
-                    const Color.fromARGB(195, 0, 0, 0).withValues(alpha: 0.10),
-                blurRadius: 5,
-                offset: const Offset(1, 2),
-              ),
-              BoxShadow(
-                color: Colors.white.withValues(alpha: 0.10),
-                blurRadius: 2,
-                offset: const Offset(-1, -1),
-              ),
-            ],
+    // Same styling as AppBackIconButton so both top-bar buttons match.
+    return Container(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.16),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
           ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: List.generate(
-              3,
-              (_) => Container(
-                height: 6,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.18),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color.fromARGB(186, 0, 0, 0)
-                          .withValues(alpha: 0.10),
-                      blurRadius: 2,
-                      offset: const Offset(0, 1),
-                    ),
-                  ],
-                ),
-              ),
+        ],
+      ),
+      child: Material(
+        color: const Color(0xFF0697B4),
+        shape: const CircleBorder(
+          side: BorderSide(color: Colors.white, width: 2.2),
+        ),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onTap,
+          child: SizedBox(
+            width: size,
+            height: size,
+            child: Icon(
+              Icons.menu_rounded,
+              color: Colors.white,
+              size: size * 0.72,
             ),
           ),
         ),
@@ -919,8 +978,8 @@ class _MenuTile extends StatelessWidget {
                       begin: Alignment.centerLeft,
                       end: Alignment.centerRight,
                       colors: [
-                        Color(0x7739D8E8),
-                        Color(0x441387C9),
+                        Color(0xFF0697B4),
+                        Color(0xFF0697B4),
                       ],
                     )
                   : null,
@@ -928,22 +987,16 @@ class _MenuTile extends StatelessWidget {
               borderRadius: BorderRadius.circular(999),
               border: Border.all(
                 color: active
-                    ? Colors.white.withValues(alpha: 0.95)
+                    ? Colors.white
                     : Colors.white.withValues(alpha: 0.22),
                 width: active ? 2.2 : 1,
               ),
               boxShadow: active
                   ? [
                       BoxShadow(
-                        color: const Color(0xFF39D8E8).withValues(alpha: 0.6),
-                        blurRadius: 18,
-                        spreadRadius: 0.5,
-                        offset: const Offset(0, 3),
-                      ),
-                      BoxShadow(
-                        color: Colors.white.withValues(alpha: 0.15),
+                        color: Colors.black.withValues(alpha: 0.18),
                         blurRadius: 6,
-                        offset: const Offset(0, -1),
+                        offset: const Offset(0, 2),
                       ),
                     ]
                   : null,
@@ -1019,10 +1072,11 @@ class _MenuTile extends StatelessWidget {
                       fontWeight: active ? FontWeight.w800 : FontWeight.w600,
                       letterSpacing: active ? 0.5 : 0.2,
                       shadows: active
-                          ? [
-                              const Shadow(
-                                color: Color(0x8839D8E8),
-                                blurRadius: 8,
+                          ? const [
+                              Shadow(
+                                color: Color(0x99000000),
+                                blurRadius: 2,
+                                offset: Offset(0, 1),
                               ),
                             ]
                           : null,

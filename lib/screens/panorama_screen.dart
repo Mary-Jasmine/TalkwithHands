@@ -1,12 +1,11 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:panorama_viewer/panorama_viewer.dart';
 import 'package:video_player/video_player.dart';
-import 'package:webview_flutter/webview_flutter.dart';
 
 import '../models/panorama_scene.dart';
 import '../services/api_config.dart';
@@ -28,35 +27,24 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
   // ── Cross-instance cache ─────────────────────────────────────────────
   // Navigator.push creates a BRAND NEW PanoramaScreen (and thus a brand
   // new State) every time the user opens "180 Pictures" from the menu,
-  // even if they were just here before. These `static` fields live on
-  // the class, not the State instance, so they survive that recreation:
-  // the scene list, the three.min.js source, and the fully-built panorama
-  // HTML page are only fetched/built ONCE per app session. Every visit
-  // after the first reuses them instantly instead of reloading.
+  // even if they were just here before. This `static` field lives on the
+  // class, not the State instance, so it survives that recreation: the
+  // scene list is only fetched ONCE per app session. Every visit after
+  // the first reuses it instantly instead of reloading.
   static List<PanoramaScene>? _cachedScenes;
-  static String? _cachedThreeJsSource;
-  static String? _cachedFullHtml;
-
-  bool _disposed = false;
 
   final _scaffoldKey = GlobalKey<ScaffoldState>();
-  late final WebViewController _webViewController;
+  late final PanoramaController _panoramaController;
   late Future<List<PanoramaScene>> _sceneFuture;
   List<PanoramaScene> _scenes = [];
   int _selectedIndex = 0;
   bool _viewerMode = false;
-  String _threeJsSource = '';
-  Future<void>? _threeJsFuture;
 
-  // ── Single-load panorama state ──────────────────────────────────────────
-  // All scenes are baked into one big HTML page (loaded once). Switching
-  // scenes afterwards is just a JS call (window.switchScene), not a full
-  // WebView reload. The WebView itself is only loaded after a user picks a
-  // scene, so opening the 180 page does not allocate the 3D viewer up front.
-  bool _fullHtmlRequested = false;
-  bool _fullHtmlReady = false;
-  bool _isFullHtmlLoad = false;
-  int _pendingSwitchIndex = -1;
+  // The panorama sphere is rendered natively (no WebView / JS engine to
+  // spin up), so the only thing worth waiting on before showing it is the
+  // equirectangular image itself. We precache it and show a small spinner
+  // for that brief moment instead of a "Loading 180 pictures..." page.
+  bool _panoramaLoading = false;
 
   String get _baseUrl {
     final baseUrl = ApiConfig.baseUrl;
@@ -68,54 +56,29 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
   @override
   void initState() {
     super.initState();
-    _webViewController = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..addJavaScriptChannel(
-        'HotspotBridge',
-        onMessageReceived: _onHotspotMessage,
-      )
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onPageFinished: (_) {
-            if (_disposed || !_isFullHtmlLoad) return;
-            _fullHtmlReady = true;
-            if (_pendingSwitchIndex != -1) {
-              final idx = _pendingSwitchIndex;
-              _pendingSwitchIndex = -1;
-              if (!_disposed) {
-                try {
-                  _webViewController.runJavaScript('window.switchScene($idx);');
-                } catch (_) {}
-              }
-            }
-          },
-        ),
-      )
-      ..loadHtmlString(_buildEmptyHtml('Loading 180 pictures...'));
-
-    _threeJsFuture = _loadThreeJs();
+    _panoramaController = PanoramaController();
 
     if (_cachedScenes != null) {
       // Already fetched during an earlier visit this session — resolve
-      // instantly (no spinner). The full panorama page still waits until
-      // the user taps View so the grid opens quickly on smaller devices.
+      // instantly (no spinner).
       _scenes = _cachedScenes!;
       _sceneFuture = Future.value(_cachedScenes!);
     } else {
-      _sceneFuture = PanoramaService().listPanoramaScenes();
+      _sceneFuture = _fetchScenes();
     }
   }
 
-  Future<void> _loadThreeJs() async {
-    if (_cachedThreeJsSource != null) {
-      _threeJsSource = _cachedThreeJsSource!;
-      return;
+  // Wrapped so that ANY failure here — including a synchronous one thrown
+  // by PanoramaService()'s constructor itself (e.g. missing base URL) —
+  // becomes a normal Future error the FutureBuilder below can show as a
+  // "Retry" screen, instead of an uncaught exception escaping initState
+  // and taking the whole app down with it.
+  Future<List<PanoramaScene>> _fetchScenes() async {
+    try {
+      return await PanoramaService().listPanoramaScenes();
+    } catch (e) {
+      throw Exception('Failed to load 180 pictures: $e');
     }
-    if (_threeJsSource.isNotEmpty) return;
-    final source = await rootBundle.loadString('assets/js/three.min.js');
-    _cachedThreeJsSource = source;
-    if (!mounted) return;
-    setState(() => _threeJsSource = source);
   }
 
   String _assetUrl(String assetPath) {
@@ -130,78 +93,65 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
     return _assetUrl(scene.imageAsset);
   }
 
+  // Equirectangular photos meant for 360°/180° viewing are often huge
+  // (6000x3000+). Feeding that straight into a native GL texture (which is
+  // what PanoramaViewer does via flutter_cube) can exceed the max texture
+  // size on lower-end GPUs and crash the WHOLE app natively — not a
+  // catchable Dart exception, just an instant exit. Capping the decoded
+  // width here keeps every device safe while still looking sharp.
+  static const int _maxPanoramaTextureWidth = 2048;
+
+  ImageProvider _panoramaTextureProvider(PanoramaScene scene) {
+    return ResizeImage(
+      CachedNetworkImageProvider(_imageUrl(scene)),
+      width: _maxPanoramaTextureWidth,
+    );
+  }
+
+  bool _usesFlatPanorama(PanoramaScene scene) =>
+      scene.id == 'classroom' || scene.id == 'school';
+
   Future<void> _loadPanorama(int index) async {
-    if (_disposed || index < 0 || index >= _scenes.length) return;
+    if (index < 0 || index >= _scenes.length) return;
     if (!mounted) return;
     setState(() {
       _selectedIndex = index;
       _viewerMode = true;
+      _panoramaLoading = true;
     });
 
-    // Make sure the single big HTML (with all scenes baked in) is loading
-    // or already loaded before we try to switch to it.
-    unawaited(_loadFullPanoramaHtml());
-
-    if (_fullHtmlReady && !_disposed) {
-      try {
-        _webViewController.runJavaScript('window.switchScene($index);');
-      } catch (_) {}
-    } else {
-      // Page isn't finished loading yet — onPageFinished will pick this up
-      // and switch to it as soon as window.switchScene exists.
-      _pendingSwitchIndex = index;
-    }
-  }
-
-  // Loads the single HTML page containing every scene, on demand. Subsequent
-  // scene changes are handled entirely in JS via window.switchScene(index),
-  // so the WebView is never reloaded again.
-  Future<void> _loadFullPanoramaHtml() async {
-    if (_disposed || _fullHtmlRequested) return;
-    _fullHtmlRequested = true;
-
-    if (_cachedFullHtml != null) {
-      // Built during an earlier visit this session — reuse as-is, no need
-      // to wait for three.js or rebuild/re-encode the scenes JSON again.
-      _isFullHtmlLoad = true;
-      if (_disposed) return;
-      try {
-        await _webViewController.loadHtmlString(_cachedFullHtml!);
-      } catch (_) {}
-      return;
-    }
-
-    await (_threeJsFuture ??= _loadThreeJs());
-    if (!mounted || _disposed) return;
-    _isFullHtmlLoad = true;
-    final html = _buildFullHtml(_scenes);
-    _cachedFullHtml = html;
+    // Warm the image cache before swapping the sphere's texture so the
+    // viewer doesn't pop in half-loaded. Flutter's own ImageCache means a
+    // scene visited before this session resolves instantly here.
     try {
-      await _webViewController.loadHtmlString(html);
-    } catch (_) {}
-  }
-
-  void _onHotspotMessage(JavaScriptMessage message) {
-    final Object? data;
-    try {
-      data = jsonDecode(message.message);
+      await precacheImage(
+        _panoramaTextureProvider(_scenes[index]),
+        context,
+      );
     } catch (_) {
+      // Swallow — the panorama widget shows its own broken-image state.
+    }
+
+    if (!mounted) return;
+    setState(() => _panoramaLoading = false);
+  }
+
+  // BENCH.jpg hotspot positions come from backend/data/panorama-scenes.json.
+  // Keeping this as a direct pass-through avoids stale hard-coded overrides
+  // pulling the marker back to the blue bench table.
+  double _hotspotPitch(PanoramaScene scene, int i) => scene.hotspots[i].pitch;
+
+  double _hotspotYaw(PanoramaScene scene, int i) => scene.hotspots[i].yaw;
+
+  // ── Navigate panorama camera to a hotspot (no auto-play — user taps hotspot) ──
+  void _navigateToHotspot(PanoramaHotspot hotspot) {
+    final scene = _scenes[_selectedIndex];
+    final i = scene.hotspots.indexOf(hotspot);
+    if (i < 0) {
+      _panoramaController.setView(hotspot.pitch, hotspot.yaw);
       return;
     }
-    if (data is! Map) return;
-
-    final hotspot = PanoramaHotspot(
-      id: (data['id'] ?? '').toString(),
-      key: '',
-      label: (data['label'] ?? '').toString(),
-      videoAsset: (data['videoAsset'] ?? '').toString(),
-      videoUrl: (data['videoUrl'] ?? '').toString(),
-      yaw: 0,
-      pitch: 0,
-      size: 1,
-      sortOrder: 0,
-    );
-    _showHotspotVideo(hotspot);
+    _panoramaController.setView(_hotspotPitch(scene, i), _hotspotYaw(scene, i));
   }
 
   void _showHotspotVideo(PanoramaHotspot hotspot) {
@@ -216,285 +166,14 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
     );
   }
 
-  String _buildEmptyHtml(String message) => '''
-<!DOCTYPE html>
-<html>
-<head>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<style>
-  body {
-    margin: 0; background: #050505; color: white; width: 100vw; height: 100vh;
-    display: flex; align-items: center; justify-content: center;
-    font-family: Arial, sans-serif; text-align: center;
-  }
-</style>
-</head>
-<body>$message</body>
-</html>
-''';
-
-  String _buildFullHtml(List<PanoramaScene> scenes) {
-    final scenesJson = jsonEncode(scenes
-        .map((s) => {
-              'id': s.id,
-              'title': s.title,
-              'imageUrl': _imageUrl(s),
-              'hotspots': s.hotspots.map((h) => h.toViewerJson()).toList(),
-            })
-        .toList());
-    final initialIndex = _selectedIndex < scenes.length ? _selectedIndex : 0;
-
-    return '''
-<!DOCTYPE html>
-<html>
-<head>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { background: #000; overflow: hidden; width: 100vw; height: 100vh; }
-  canvas { display: block; }
-  #hint {
-    position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
-    background: rgba(0,0,0,0.66); color: white; padding: 7px 16px;
-    border-radius: 999px; font-family: Arial, sans-serif; font-size: 13px;
-    pointer-events: none; transition: opacity 1s; z-index: 3;
-  }
-  #hotspots {
-    position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 2;
-  }
-  .hotspot {
-    position: absolute; left: 0; top: 0; transform: translate(-50%, -50%);
-    width: 48px;
-    height: 45px; border-radius: 50%;
-    border: 2.5px solid rgba(255,255,255,0.85);
-    border-shadow: grey 10px 0px 0px 10px;
-    background: transparent;
-    cursor: pointer; pointer-events: auto;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.25); user-select: none;
-    transition: opacity 120ms ease, transform 120ms ease, background 120ms ease;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 0;
-  }
-  .hotspot::after {
-    content: '';
-    width: 0; height: 0;
-    border-top: 10px solid transparent;
-    border-bottom: 10px solid transparent;
-    border-left: 18px solid rgba(255,255,255,0.9);
-    margin-left: 4px;
-  }
-  .hotspot::before {
-    display: none;
-  }
-  .hotspot:hover {
-    background: rgba(255,255,255,0.15);
-    transform: translate(-50%, -50%) scale(1.1);
-  }
-</style>
-</head>
-<body>
-<div id="hotspots"></div>
-<div id="hint">Drag to look around</div>
-<script>$_threeJsSource</script>
-<script>
-  const scenesData = $scenesJson;
-  let currentIndex = 0;
-
-  setTimeout(() => {
-    const h = document.getElementById('hint');
-    if (h) { h.style.opacity = '0'; setTimeout(() => h.remove(), 1000); }
-  }, 3000);
-
-  const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-  camera.position.set(0, 0, 0.1);
-  let renderer;
-  try {
-    renderer = new THREE.WebGLRenderer({antialias: false, powerPreference: 'low-power'});
-  } catch (error) {
-    document.body.innerHTML = '<p style="color:white;text-align:center;padding:24px;font-family:Arial">This device cannot display 180 pictures.</p>';
-    throw error;
-  }
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
-  document.body.appendChild(renderer.domElement);
-
-  const geometry = new THREE.SphereGeometry(500, 60, 40);
-  geometry.scale(-1, 1, 1);
-  const material = new THREE.MeshBasicMaterial();
-  const sphere = new THREE.Mesh(geometry, material);
-  scene.add(sphere);
-
-  const loader = new THREE.TextureLoader();
-  let activeTexture = null;
-  function loadTexture(i) {
-    return new Promise(resolve => {
-      loader.load(
-        scenesData[i].imageUrl,
-        tex => resolve(tex),
-        undefined,
-        () => resolve(null),
-      );
-    });
-  }
-
-  const hotspotRoot = document.getElementById('hotspots');
-  let hotspotItems = [];
-
-  function hotspotPoint(yaw, pitch) {
-    const radius = 460;
-    const theta = THREE.MathUtils.degToRad(yaw);
-    const phi = THREE.MathUtils.degToRad(pitch);
-    return new THREE.Vector3(
-      radius * Math.cos(phi) * Math.cos(theta),
-      radius * Math.sin(phi),
-      radius * Math.cos(phi) * Math.sin(theta)
-    );
-  }
-
-  function renderHotspots(list) {
-    hotspotRoot.innerHTML = '';
-    hotspotItems = list.map(item => {
-      const el = document.createElement('button');
-      el.type = 'button';
-      el.className = 'hotspot';
-      el.textContent = item.label;
-      el.style.transform = 'translate(-50%, -50%) scale(' + String(item.size || 1) + ')';
-      el.addEventListener('pointerdown', e => e.stopPropagation());
-      el.addEventListener('click', e => {
-        e.stopPropagation();
-        HotspotBridge.postMessage(JSON.stringify(item));
-      });
-      hotspotRoot.appendChild(el);
-      return { data: item, el, point: hotspotPoint(item.yaw, item.pitch) };
-    });
-  }
-
-  // ── Called from Flutter every time the user switches scenes. No page
-  // reload — just swaps the sphere's texture and rebuilds hotspots. ────
-  window.switchScene = async function(i) {
-    if (i < 0 || i >= scenesData.length) return;
-    currentIndex = i;
-    lon = 0; lat = 0; autoRotate = true;
-    const tex = await loadTexture(i);
-    if (!tex) {
-      hotspotRoot.innerHTML = '<p style="color:white;text-align:center;padding:24px;font-family:Arial">Picture unavailable.</p>';
-      return;
-    }
-    if (activeTexture && activeTexture !== tex) {
-      activeTexture.dispose();
-    }
-    activeTexture = tex;
-    material.map = tex;
-    material.needsUpdate = true;
-    renderHotspots(scenesData[i].hotspots);
-  };
-
-  // Called from Flutter to rotate camera to a hotspot
-  window.navigateTo = function(yaw, pitch) {
-    autoRotate = false;
-    lon = yaw;
-    lat = -pitch; // pitch is inverted in this coordinate system
-  };
-
-  let isInteracting = false, autoRotate = true;
-  let lon = 0, lat = 0, downX = 0, downY = 0, downLon = 0, downLat = 0;
-  let lastPinchDist = 0;
-
-  function onDown(e) {
-    isInteracting = true; autoRotate = false;
-    const x = e.touches ? e.touches[0].clientX : e.clientX;
-    const y = e.touches ? e.touches[0].clientY : e.clientY;
-    downX = x; downY = y; downLon = lon; downLat = lat;
-  }
-  function onMove(e) {
-    if (!isInteracting) return;
-    if (e.touches && e.touches.length === 2) {
-      const dx = e.touches[0].clientX - e.touches[1].clientX;
-      const dy = e.touches[0].clientY - e.touches[1].clientY;
-      const dist = Math.sqrt(dx*dx + dy*dy);
-      if (lastPinchDist > 0) {
-        camera.fov = Math.max(30, Math.min(90, camera.fov - (dist - lastPinchDist) * 0.1));
-        camera.updateProjectionMatrix();
-      }
-      lastPinchDist = dist;
-      return;
-    }
-    lastPinchDist = 0;
-    const x = e.touches ? e.touches[0].clientX : e.clientX;
-    const y = e.touches ? e.touches[0].clientY : e.clientY;
-    lon = (downX - x) * 0.2 + downLon;
-    lat = (y - downY) * 0.2 + downLat;
-  }
-  function onUp() { isInteracting = false; lastPinchDist = 0; }
-
-  document.addEventListener('mousedown', onDown);
-  document.addEventListener('mousemove', onMove);
-  document.addEventListener('mouseup', onUp);
-  document.addEventListener('touchstart', onDown, {passive: true});
-  document.addEventListener('touchmove', onMove, {passive: true});
-  document.addEventListener('touchend', onUp);
-  document.addEventListener('wheel', e => {
-    camera.fov = Math.max(30, Math.min(90, camera.fov + e.deltaY * 0.05));
-    camera.updateProjectionMatrix();
-  });
-  window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth/window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-  });
-
-  function updateHotspots() {
-    const viewDirection = new THREE.Vector3();
-    camera.getWorldDirection(viewDirection);
-    hotspotItems.forEach(item => {
-      const facing = item.point.clone().normalize().dot(viewDirection) > 0;
-      const projected = item.point.clone().project(camera);
-      const visible = facing && projected.z > -1 && projected.z < 1;
-      item.el.style.opacity = visible ? '1' : '0';
-      item.el.style.pointerEvents = visible ? 'auto' : 'none';
-      if (!visible) return;
-      const x = (projected.x * 0.5 + 0.5) * window.innerWidth;
-      const y = (-projected.y * 0.5 + 0.5) * window.innerHeight;
-      item.el.style.left = x + 'px';
-      item.el.style.top = y + 'px';
-    });
-  }
-
-  function animate() {
-    requestAnimationFrame(animate);
-    if (autoRotate) lon += 0.05;
-    lat = Math.max(-85, Math.min(85, lat));
-    const phi = THREE.MathUtils.degToRad(90 - lat);
-    const theta = THREE.MathUtils.degToRad(lon);
-    camera.lookAt(
-      500 * Math.sin(phi) * Math.cos(theta),
-      500 * Math.cos(phi),
-      500 * Math.sin(phi) * Math.sin(theta)
-    );
-    renderer.render(scene, camera);
-    updateHotspots();
-  }
-  animate();
-
-  // Load only the requested scene. Keeping every panorama texture in memory
-  // at once can terminate the Android WebView on lower-memory devices.
-  switchScene($initialIndex).then(() => {
-  });
-</script>
-</body>
-</html>
-''';
-  }
-
   IconData _sceneIcon(PanoramaScene scene) {
     switch (scene.icon) {
       case 'bench':
         return Icons.chair_outlined;
-      case 'school':  
-        return Icons.school_outlined;  
+      case 'school':
+        return Icons.school_outlined;
       case 'classroom':
-        return Icons.meeting_room_outlined;  
+        return Icons.meeting_room_outlined;
       case 'crossing':
         return Icons.directions_walk_rounded;
       case 'cafe':
@@ -511,26 +190,17 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
       _selectedIndex = 0;
       _viewerMode = false;
       _scenes = [];
-      _fullHtmlRequested = false;
-      _fullHtmlReady = false;
-      _isFullHtmlLoad = false;
-      _pendingSwitchIndex = -1;
+      _panoramaLoading = false;
       // Retry/reload means the user explicitly wants fresh data — clear the
-      // cache so this next fetch/build actually happens again.
+      // cache so this next fetch actually happens again.
       _cachedScenes = null;
-      _cachedFullHtml = null;
-      _sceneFuture = PanoramaService().listPanoramaScenes();
-      _webViewController
-          .loadHtmlString(_buildEmptyHtml('Loading 180 pictures...'));
+      _sceneFuture = _fetchScenes();
     });
   }
 
   @override
   void dispose() {
-    _disposed = true;
-    try {
-      unawaited(_webViewController.loadHtmlString(_buildEmptyHtml('')));
-    } catch (_) {}
+    _panoramaController.dispose();
     super.dispose();
   }
 
@@ -552,86 +222,88 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
               ),
             ),
             SafeArea(
-          child: Column(
-            children: [
-              AppTopBar(
-                onBack: () {
-                  if (_viewerMode) {
-                    setState(() => _viewerMode = false);
-                  } else {
-                    Navigator.of(context).pop();
-                  }
-                },
-                onMenu: () => _scaffoldKey.currentState?.openEndDrawer(),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(top: 2, bottom: 12),
-                child: Text(
-                  _viewerMode && _scenes.isNotEmpty
-                      ? _scenes[_selectedIndex].title.toUpperCase()
-                      : '180 PICTURES',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Color(0xFF1500C8),
-                    fontSize: 32,
-                    fontWeight: FontWeight.w900,
+              child: Column(
+                children: [
+                  AppTopBar(
+                    onBack: () {
+                      if (_viewerMode) {
+                        setState(() => _viewerMode = false);
+                      } else {
+                        Navigator.of(context).pop();
+                      }
+                    },
+                    onMenu: () => _scaffoldKey.currentState?.openEndDrawer(),
                   ),
-                ),
-              ),
-              if (!_viewerMode)
-                const SizedBox(
-                  height: 120,
-                  width: 240,
-                  child: TransparentSignVideoOverlay(
-                    videoAsset: 'assets/180.mp4',
-                    fit: BoxFit.contain,
-                    volume: 0,
-                    threshold: 0.34,
-                    smoothing: 0.08,
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2, bottom: 12),
+                    child: Text(
+                      _viewerMode && _scenes.isNotEmpty
+                          ? _scenes[_selectedIndex].title.toUpperCase()
+                          : '180° PICTURES',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Color(0xFF1500C8),
+                        fontSize: 32,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
                   ),
-                ),
-              Expanded(
-                child: FutureBuilder<List<PanoramaScene>>(
-                  future: _sceneFuture,
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(
-                        child: CircularProgressIndicator(color: Colors.white),
-                      );
-                    }
+                  if (!_viewerMode)
+                    const SizedBox(
+                      height: 120,
+                      width: 240,
+                      child: TransparentSignVideoOverlay(
+                        videoAsset: 'assets/180.mp4',
+                        fit: BoxFit.contain,
+                        volume: 0,
+                        threshold: 0.34,
+                        smoothing: 0.08,
+                      ),
+                    ),
+                  Expanded(
+                    child: FutureBuilder<List<PanoramaScene>>(
+                      future: _sceneFuture,
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState ==
+                            ConnectionState.waiting) {
+                          return const Center(
+                            child:
+                                CircularProgressIndicator(color: Colors.white),
+                          );
+                        }
 
-                    if (snapshot.hasError) {
-                      return _ErrorState(
-                        message:
-                            'Cannot load 180 pictures. Make sure the backend is running.',
-                        onRetry: _reload,
-                      );
-                    }
+                        if (snapshot.hasError) {
+                          return _ErrorState(
+                            message:
+                                'Cannot load 180 pictures. Make sure the backend is running.',
+                            onRetry: _reload,
+                          );
+                        }
 
-                    final scenes = snapshot.data ?? const [];
-                    if (scenes.isEmpty) {
-                      return _ErrorState(
-                        message: 'No 180 pictures found.',
-                        onRetry: _reload,
-                      );
-                    }
+                        final scenes = snapshot.data ?? const [];
+                        if (scenes.isEmpty) {
+                          return _ErrorState(
+                            message: 'No 180 pictures found.',
+                            onRetry: _reload,
+                          );
+                        }
 
-                    if (_scenes.isEmpty) {
-                      _scenes = scenes;
-                      _cachedScenes = scenes;
-                    }
+                        if (_scenes.isEmpty) {
+                          _scenes = scenes;
+                          _cachedScenes = scenes;
+                        }
 
-                    if (!_viewerMode) {
-                      return _buildCategoryGrid();
-                    }
+                        if (!_viewerMode) {
+                          return _buildCategoryGrid();
+                        }
 
-                    return _buildViewer();
-                  },
-                ),
+                        return _buildViewer();
+                      },
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
-        ),
+            ),
           ],
         ),
       ),
@@ -665,13 +337,6 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
     );
   }
 
-  // ── Navigate panorama camera to a hotspot (no auto-play — user taps hotspot) ──
-  void _navigateToHotspot(PanoramaHotspot hotspot) {
-    _webViewController.runJavaScript(
-      'window.navigateTo(${hotspot.yaw}, ${hotspot.pitch});',
-    );
-  }
-
   // ── Words / hotspot list below the 180 viewer ───────────────────────────
   Widget _buildWordsList(List<PanoramaHotspot> hotspots) {
     if (hotspots.isEmpty) return const SizedBox.shrink();
@@ -695,7 +360,7 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
         children: [
           const Text(
             'Words',
-            textAlign: TextAlign.center,  
+            textAlign: TextAlign.center,
             style: TextStyle(
               color: Color(0xFF1500C8),
               fontSize: 18,
@@ -753,9 +418,35 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
     );
   }
 
-  // ── 180 viewer with thumbnail strip ─────────────────────────────────────
+  // Classroom and School are wide panorama strips, not equirectangular
+  // sphere photos. Keep them flat so their original proportions stay intact.
+  Widget _buildFlatPanorama(PanoramaScene scene) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = math.max(constraints.maxWidth, 1600.0);
+        final aspectRatio = scene.id == 'classroom' ? 6.97 : 7.35;
+        return InteractiveViewer(
+          constrained: false,
+          minScale: 1,
+          maxScale: 4,
+          boundaryMargin: const EdgeInsets.all(80),
+          child: SizedBox(
+            width: width,
+            height: width / aspectRatio,
+            child: Image(
+              image: _panoramaTextureProvider(scene),
+              fit: BoxFit.fill,
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // ── 180 viewer with hotspots + thumbnail strip ─────────────────────────
   Widget _buildViewer() {
-    final currentHotspots = _scenes.isNotEmpty ? _scenes[_selectedIndex].hotspots : <PanoramaHotspot>[];
+    final scene = _scenes[_selectedIndex];
+    final currentHotspots = scene.hotspots;
 
     return Column(
       children: [
@@ -764,13 +455,154 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(16),
-              child: WebViewWidget(controller: _webViewController),
+              child: Container(
+                color: Colors.black,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    if (_usesFlatPanorama(scene))
+                      _buildFlatPanorama(scene)
+                    else
+                      PanoramaViewer(
+                        key: ValueKey('panorama-${scene.id}'),
+                        animSpeed: 0.0,
+                        sensorControl: SensorControl.none,
+                        panoramaController: _panoramaController,
+                        child: Image(
+                          image: _panoramaTextureProvider(scene),
+                        ),
+                        hotspots: [
+                          for (var i = 0; i < currentHotspots.length; i++)
+                            Hotspot(
+                              name: currentHotspots[i].id,
+                              latitude: _hotspotPitch(scene, i),
+                              longitude: _hotspotYaw(scene, i),
+                              width: 46 *
+                                  (currentHotspots[i].size <= 0
+                                      ? 1
+                                      : currentHotspots[i].size),
+                              height: 46 *
+                                  (currentHotspots[i].size <= 0
+                                      ? 1
+                                      : currentHotspots[i].size),
+                              widget: _HotspotMarker(
+                                onTap: () =>
+                                    _showHotspotVideo(currentHotspots[i]),
+                              ),
+                            ),
+                        ],
+                      ),
+                    if (!_panoramaLoading)
+                      _DragHint(key: ValueKey('hint-${scene.id}')),
+                    if (_panoramaLoading)
+                      Container(
+                        color: Colors.black54,
+                        alignment: Alignment.center,
+                        child: const CircularProgressIndicator(
+                          color: Colors.white,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             ),
           ),
         ),
         _buildWordsList(currentHotspots),
         const SizedBox(height: 16),
       ],
+    );
+  }
+}
+
+// ── Round play-button hotspot marker placed on the sphere ──────────────────
+class _HotspotMarker extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _HotspotMarker({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: Colors.black.withValues(alpha: 0.22),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.9),
+            width: 2.4,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.3),
+              blurRadius: 10,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        alignment: Alignment.center,
+        child: const Icon(
+          Icons.play_arrow_rounded,
+          color: Colors.white,
+          size: 22,
+        ),
+      ),
+    );
+  }
+}
+
+// ── "Drag to look around" hint that fades out, same as the old JS one ──────
+class _DragHint extends StatefulWidget {
+  const _DragHint({super.key});
+
+  @override
+  State<_DragHint> createState() => _DragHintState();
+}
+
+class _DragHintState extends State<_DragHint> {
+  bool _visible = true;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _visible = false);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: AnimatedOpacity(
+            opacity: _visible ? 1 : 0,
+            duration: const Duration(milliseconds: 900),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.66),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: const Text(
+                'Drag to look around',
+                style: TextStyle(color: Colors.white, fontSize: 13),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -1218,35 +1050,39 @@ class _PanoramaCategoryCard extends StatelessWidget {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  // Dark backing so any letterbox space around a
-                  // non-16:9 photo reads as an intentional frame, not
-                  // empty space — the picture itself is never cropped.
+                  // Backing color shows briefly while the crop loads.
                   Container(color: const Color(0xFF08414A)),
-                  Center(
-                    child: AspectRatio(
-                      aspectRatio: 16 / 9,
-                      child: CachedNetworkImage(
-                        imageUrl: imageUrl,
-                        fit: BoxFit.contain,
-                        errorWidget: (_, __, ___) => Container(
-                          color: const Color(0xFF08414A),
-                          alignment: Alignment.center,
-                          child: Icon(
-                            Icons.threesixty_rounded,
-                            color: kAccent.withValues(alpha: 0.8),
-                            size: 36,
-                          ),
+                  // Fills the whole card — a portion of the photo gets
+                  // cropped off (top/bottom or sides) instead of
+                  // letterboxing, so the card never shows empty bars.
+                  Positioned.fill(
+                    child: CachedNetworkImage(
+                      imageUrl: imageUrl,
+                      fit: BoxFit.cover,
+                      alignment: Alignment.center,
+                      // Thumbnails only need to be a few hundred px wide,
+                      // not the full panorama resolution — this caps how
+                      // large a bitmap gets decoded/cached per card.
+                      memCacheWidth: 480,
+                      fadeInDuration: const Duration(milliseconds: 150),
+                      errorWidget: (_, __, ___) => Container(
+                        color: const Color(0xFF08414A),
+                        alignment: Alignment.center,
+                        child: Icon(
+                          Icons.threesixty_rounded,
+                          color: kAccent.withValues(alpha: 0.8),
+                          size: 36,
                         ),
-                        placeholder: (_, __) => Container(
-                          color: const Color(0xFF08414A),
-                          alignment: Alignment.center,
-                          child: SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2.4,
-                              color: kAccent,
-                            ),
+                      ),
+                      placeholder: (_, __) => Container(
+                        color: const Color(0xFF08414A),
+                        alignment: Alignment.center,
+                        child: SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.4,
+                            color: kAccent,
                           ),
                         ),
                       ),
@@ -1279,48 +1115,6 @@ class _PanoramaCategoryCard extends StatelessWidget {
                       child: Icon(icon, color: Colors.white, size: 14),
                     ),
                   ),
-                  if (highlighted)
-                    Positioned(
-                      top: 8,
-                      right: 8,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [kAccent, Color(0xFF1387C9)],
-                          ),
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.8),
-                            width: 1,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: kAccent.withValues(alpha: 0.6),
-                              blurRadius: 8,
-                            ),
-                          ],
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.star_rounded,
-                                size: 11, color: Colors.white),
-                            SizedBox(width: 2),
-                            Text(
-                              'POPULAR',
-                              style: TextStyle(
-                                fontSize: 9,
-                                fontWeight: FontWeight.w900,
-                                color: Colors.white,
-                                letterSpacing: 0.6,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
                 ],
               ),
             ),

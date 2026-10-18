@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:camera/camera.dart';
+import 'package:confetti/confetti.dart';
 import 'package:flutter/material.dart';
 import 'package:hand_landmarker/hand_landmarker.dart' as mp_hand;
 import 'package:permission_handler/permission_handler.dart';
@@ -36,6 +37,7 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
   bool _streaming = false;
   bool _modelsReady = false;
   Timer? _roundTimer;
+  late final ConfettiController _confettiController;
   int _secondsLeft = 15;
   int _lives = 3;
   int _roundAnswer = 0;
@@ -72,7 +74,7 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
     'P': '+',
     'M': '-',
     'X': 'x',
-    'Q': '%',
+    'Q': '÷',
     'E': '=',
   };
 
@@ -82,6 +84,8 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
   @override
   void initState() {
     super.initState();
+    _confettiController =
+        ConfettiController(duration: const Duration(seconds: 3));
     WidgetsBinding.instance.addObserver(this);
     _handLandmarker = mp_hand.HandLandmarkerPlugin.create(
       numHands: 1,
@@ -109,12 +113,13 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
     _handLandmarker.dispose();
     _tfliteClassifier.close();
     _roundTimer?.cancel();
+    _confettiController.dispose();
     super.dispose();
   }
 
   void _newRound() {
     final random = math.Random();
-    const operators = ['+', '-', 'x', '%'];
+    const operators = ['+', '-', 'x', '÷'];
     int left;
     int right;
     String operator;
@@ -141,9 +146,13 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
       }
     } while (answer > 20);
     _roundAnswer = answer;
-    _roundEquation = '$left $operator $right = ?';
+    _roundEquation = '$left $operator $right =';
     _secondsLeft = 15;
     _cameraAnswer = '';
+    // Every question starts fresh: close the keypad and clear what was typed,
+    // so the player can choose again between the keypad and the camera.
+    _keypadOpen = false;
+    _clearCalculator();
   }
 
   Future<void> _loadScoreData() async {
@@ -177,14 +186,17 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
     setState(() {
       _highScore = highScore;
       _recentScores = recentScores;
-      _newHighScore = _score > previousHighScore;
+      _newHighScore = _score > 0 && _score > previousHighScore;
     });
+    if (_newHighScore) _confettiController.play();
   }
 
   void _loseLife(String message) {
     if (_gameOver) return;
     setState(() {
       _lives--;
+      _keypadOpen = false;
+      _clearCalculator();
       if (_lives == 0) {
         _gameOver = true;
         _roundTimer?.cancel();
@@ -216,26 +228,23 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
     });
   }
 
-  void _submitCameraDigit(String digit) {
+  // Checks the sign captured with "Capture Sign" against the equation.
+  // Nothing is checked until the player presses Submit.
+  void _submitCameraAnswer() {
     if (_gameOver) return;
-    final candidate = '$_cameraAnswer$digit';
-    final number = int.tryParse(candidate);
-    if (number == null || number > 20) {
-      setState(() => _cameraAnswer = '');
+    final number = int.tryParse(_cameraAnswer);
+    if (number == null) {
+      _showMessage('Capture your sign first.');
       return;
     }
-    if (_roundAnswer < 10 || candidate.length == 2) {
-      if (number == _roundAnswer) {
-        setState(() {
-          _score++;
-          _newRound();
-        });
-        _showMessage('Correct!');
-      } else {
-        _loseLife('Try the next one!');
-      }
+    if (number == _roundAnswer) {
+      setState(() {
+        _score++;
+        _newRound();
+      });
+      _showMessage('Correct!');
     } else {
-      setState(() => _cameraAnswer = candidate);
+      _loseLife('Try the next one!');
     }
   }
 
@@ -329,9 +338,9 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
     }
     setState(() => _capturing = true);
     try {
-      if (RegExp(r'^\d$').hasMatch(input)) {
-        _submitCameraDigit(input);
-        _showMessage('Detected $input');
+      if (_isCalculatorNumber(input)) {
+        setState(() => _cameraAnswer = input);
+        _showMessage('Captured $input. Press Submit to check it.');
       } else {
         _showMessage('Sign a number from 0 to 20.');
       }
@@ -343,7 +352,38 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
   }
 
   void _showManualKeypad() {
-    setState(() => _keypadOpen = true);
+    setState(() {
+      _keypadOpen = true;
+      // Drop stale camera detections so they can't be submitted later.
+      _handLandmarks = null;
+      _currentHit = null;
+      _stableInput = null;
+      _lastRawInput = null;
+      _stableFrames = 0;
+    });
+  }
+
+  // Submits the answer from the manual keypad against the current equation
+  // (the keypad's counterpart of the camera's Capture Sign button).
+  void _submitManualAnswer() {
+    if (_gameOver) return;
+    if (_pendingOperator != null && !_replaceDisplay) {
+      setState(_resolveOperation);
+    }
+    final value = double.tryParse(_display);
+    if (value == null) {
+      _showMessage('Type your answer first.');
+      return;
+    }
+    if (value == _roundAnswer.toDouble()) {
+      setState(() {
+        _score++;
+        _newRound();
+      });
+      _showMessage('Correct!');
+    } else {
+      _loseLife('Try the next one!');
+    }
   }
 
   void _closeManualKeypad() {
@@ -373,7 +413,7 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
   }
 
   void _onCameraFrame(CameraImage image) {
-    if (_processing || !_cameraReady) return;
+    if (_processing || !_cameraReady || _keypadOpen) return;
     _frameCounter++;
     if (_frameCounter % _processEveryNFrames != 0) return;
 
@@ -448,8 +488,13 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
 
   String? _calculatorInputFor(SignResult hit) {
     final label = hit.label.toUpperCase();
-    if (RegExp(r'^\d$').hasMatch(label)) return label;
+    if (_isCalculatorNumber(label)) return label;
     return _commandSigns[label];
+  }
+
+  bool _isCalculatorNumber(String value) {
+    final number = int.tryParse(value);
+    return number != null && number >= 0 && number <= 20;
   }
 
   void _updateStableInput(String? input) {
@@ -482,6 +527,26 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
   }
 
   void _onCalculatorTap(String value) {
+    if (_gameOver) return;
+    if (value == '=') {
+      setState(() {
+        if (_pendingOperator != null) _resolveOperation();
+      });
+      final answer = double.tryParse(_display);
+      if (answer == null) {
+        _showMessage('Enter your answer first.');
+      } else if (answer == _roundAnswer.toDouble()) {
+        setState(() {
+          _score++;
+          _newRound();
+        });
+        _showMessage('Correct!');
+      } else {
+        _loseLife('Try the next one!');
+      }
+      return;
+    }
+
     setState(() {
       if (RegExp(r'^\d$').hasMatch(value)) {
         _inputDigit(value);
@@ -491,8 +556,6 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
         _clearCalculator();
       } else if (value == 'DEL') {
         _deleteLast();
-      } else if (value == '=') {
-        _resolveOperation();
       } else {
         _chooseOperator(value);
       }
@@ -566,7 +629,7 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
       '+' => left + right,
       '-' => left - right,
       'x' => left * right,
-      '%' => right == 0 ? double.nan : left / right,
+      '÷' => right == 0 ? double.nan : left / right,
       _ => right,
     };
 
@@ -627,7 +690,15 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
                                 const SizedBox(height: 8),
                                 _buildEquationCard(),
                                 const SizedBox(height: 10),
-                                _buildGameStage(),
+                                // Camera box disappears the moment the keypad
+                                // opens and fades back in after it is closed.
+                                AnimatedOpacity(
+                                  duration: _keypadOpen
+                                      ? Duration.zero
+                                      : const Duration(milliseconds: 200),
+                                  opacity: _keypadOpen ? 0 : 1,
+                                  child: _buildGameStage(),
+                                ),
                                 const SizedBox(height: 12),
                                 _buildActionButtons(),
                               ],
@@ -641,13 +712,14 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
                       curve: Curves.easeOutCubic,
                       left: 0,
                       right: 0,
-                      bottom: _keypadOpen ? 0 : -(canvasHeight / 2),
-                      height: canvasHeight / 2,
+                      bottom: _keypadOpen ? 0 : -(canvasHeight * 0.64),
+                      height: canvasHeight * 0.64,
                       child: IgnorePointer(
                         ignoring: !_keypadOpen,
                         child: Material(
                           color: const Color(0xEE071B38),
                           child: SafeArea(
+                            top: false,
                             child: Column(
                               children: [
                                 Align(
@@ -656,10 +728,25 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
                                     tooltip: 'Close keypad',
                                     icon: const Icon(Icons.close_rounded),
                                     color: Colors.white,
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(
+                                      minWidth: 40,
+                                      minHeight: 36,
+                                    ),
                                     onPressed: _closeManualKeypad,
                                   ),
                                 ),
                                 Expanded(child: _buildCalculator()),
+                                Padding(
+                                  padding:
+                                      const EdgeInsets.fromLTRB(24, 6, 24, 8),
+                                  child: _GameActionButton(
+                                    icon: Icons.check_circle_rounded,
+                                    label: 'Submit Answer',
+                                    color: const Color(0xFF1FA64A),
+                                    onTap: _submitManualAnswer,
+                                  ),
+                                ),
                               ],
                             ),
                           ),
@@ -674,63 +761,84 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
                           child: _buildGameOverCard(),
                         ),
                       ),
-                    const _DecorativeAsset(
-                      asset: 'peace.png',
-                      left: 26,
-                      top: 174,
-                      width: 48,
-                      rotation: -0.18,
-                    ),
-                    const _DecorativeAsset(
-                      asset: 'wssun.png',
-                      right: 20,
-                      top: 78,
-                      width: 76,
-                    ),
-                    const _DecorativeAsset(
-                      asset: 'cloud.png',
-                      left: 77,
-                      top: 78,
-                      width: 48,
-                    ),
-                    const _DecorativeAsset(
-                      asset: 'clouds.png',
-                      right: 39,
-                      top: 146,
-                      width: 48,
-                    ),
-                    const _DecorativeAsset(
-                      asset: 'sign.png',
-                      right: 19,
-                      top: 274,
-                      width: 78,
-                      rotation: 0.13,
-                    ),
-                    const _DecorativeAsset(
-                      asset: 'bulb.png',
-                      right: 4,
-                      top: 386,
-                      width: 38,
-                      rotation: 0.16,
-                    ),
-                    const _DecorativeAsset(
-                      asset: 'rainbow.png',
-                      left: -6,
-                      bottom: 248,
-                      width: 83,
-                    ),
-                    const _DecorativeAsset(
-                      asset: 'avatar.png',
-                      right: 6,
-                      bottom: 31,
-                      width: 103,
-                    ),
-                    const _DecorativeAsset(
-                      asset: 'flowers.png',
-                      left: 4,
-                      bottom: 0,
-                      width: 72,
-                    ),
+                    if (!_keypadOpen && !_gameOver) ...[
+                      const _DecorativeAsset(
+                        asset: 'peace.png',
+                        left: 26,
+                        top: 174,
+                        width: 48,
+                        rotation: -0.18,
+                      ),
+                      const _DecorativeAsset(
+                        asset: 'wssun.png',
+                        right: 20,
+                        top: 78,
+                        width: 76,
+                      ),
+                      const _DecorativeAsset(
+                        asset: 'cloud.png',
+                        left: 77,
+                        top: 78,
+                        width: 48,
+                      ),
+                      const _DecorativeAsset(
+                        asset: 'clouds.png',
+                        right: 39,
+                        top: 146,
+                        width: 48,
+                      ),
+                      const _DecorativeAsset(
+                        asset: 'bulb.png',
+                        right: 4,
+                        top: 386,
+                        width: 38,
+                        rotation: 0.16,
+                      ),
+                      const _DecorativeAsset(
+                        asset: 'rainbow.png',
+                        left: -6,
+                        bottom: 248,
+                        width: 83,
+                      ),
+                      const _DecorativeAsset(
+                        asset: 'avatar.png',
+                        right: 0,
+                        bottom: 0,
+                        width: 103,
+                      ),
+                      const _DecorativeAsset(
+                        asset: 'flowers.png',
+                        left: 4,
+                        bottom: 0,
+                        width: 72,
+                      ),
+                    ],
+                    if (_gameOver && _newHighScore)
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          child: Align(
+                            alignment: Alignment.topCenter,
+                            child: ConfettiWidget(
+                              confettiController: _confettiController,
+                              blastDirectionality:
+                                  BlastDirectionality.explosive,
+                              emissionFrequency: 0.08,
+                              numberOfParticles: 18,
+                              maxBlastForce: 18,
+                              minBlastForce: 8,
+                              gravity: 0.1,
+                              shouldLoop: false,
+                              colors: const [
+                                Color(0xFFFFA000),
+                                Color(0xFF1268EA),
+                                Color(0xFFFFD43B),
+                                Color(0xFF35C84A),
+                                Colors.white,
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -759,6 +867,15 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
               color: _secondsLeft <= 5
                   ? const Color(0xFFF3382E)
                   : const Color(0xFF1268EA),
+            ),
+            const SizedBox(width: 8),
+            Tooltip(
+              message: 'Correct answers: $_score',
+              child: _StatusPill(
+                icon: Icons.check_circle_rounded,
+                label: '$_score',
+                color: const Color(0xFFFF7900),
+              ),
             ),
           ],
         ),
@@ -859,51 +976,19 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
                   )),
             ),
           ],
-          const SizedBox(height: 12),
-          const Align(
-            alignment: Alignment.centerLeft,
-            child: Text('RECENT SCORES',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w900,
-                )),
-          ),
-          const SizedBox(height: 6),
-          Wrap(
-            alignment: WrapAlignment.center,
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              for (var index = 0; index < _recentScores.length; index++)
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                  decoration: BoxDecoration(
-                    color: index == 0 ? const Color(0xFF1268EA) : Colors.white,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color:
-                          index == 0 ? Colors.white : const Color(0xFF1268EA),
-                      width: 2,
-                    ),
-                  ),
-                  child: Text('${_recentScores[index]}',
-                      style: TextStyle(
-                        color:
-                            index == 0 ? Colors.white : const Color(0xFF1268EA),
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
-                      )),
-                ),
-            ],
-          ),
           const SizedBox(height: 16),
           _GameActionButton(
             icon: Icons.refresh_rounded,
             label: 'Play Again',
             color: const Color(0xFF1268EA),
             onTap: _restartGame,
+          ),
+          const SizedBox(height: 10),
+          _GameActionButton(
+            icon: Icons.exit_to_app_rounded,
+            label: 'Exit',
+            color: const Color.fromARGB(19, 252, 248, 248),
+            onTap: () => Navigator.of(context).maybePop(),
           ),
         ],
       ),
@@ -912,8 +997,8 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
 
   Widget _buildEquationCard() {
     return Container(
-      width: 224,
-      height: 106,
+      width: 320,
+      height: 116,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: const Color(0xFF1268EA),
@@ -933,19 +1018,36 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
                 fontWeight: FontWeight.w900,
               )),
           const SizedBox(height: 5),
-          Text(_roundEquation,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 30,
-                fontWeight: FontWeight.w900,
-              )),
-          if (_cameraAnswer.isNotEmpty)
-            Text('Sign: $_cameraAnswer',
-                style: const TextStyle(
-                  color: Color(0xFFFFD43B),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                )),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(_roundEquation,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 30,
+                    fontWeight: FontWeight.w900,
+                  )),
+              const SizedBox(width: 8),
+              Container(
+                width: 58,
+                height: 42,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: _cameraAnswer.isEmpty
+                      ? const Color(0xFFFFB20D)
+                      : Colors.white,
+                  borderRadius: BorderRadius.circular(11),
+                  border: Border.all(color: const Color(0xFFFFD43B), width: 2),
+                ),
+                child: Text(_cameraAnswer,
+                    style: const TextStyle(
+                      color: Color(0xFF1268EA),
+                      fontSize: 24,
+                      fontWeight: FontWeight.w900,
+                    )),
+              ),
+            ],
+          ),
         ],
       ),
     );
@@ -957,8 +1059,8 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
       alignment: Alignment.center,
       children: [
         Container(
-          width: 224,
-          height: 224,
+          width: 320,
+          height: 320,
           padding: const EdgeInsets.all(7),
           decoration: BoxDecoration(
             color: const Color(0xFFFFA000),
@@ -1081,23 +1183,37 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
   Widget _buildActionButtons() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Expanded(
-              child: _GameActionButton(
-            icon: Icons.calculate_rounded,
-            label: 'Manual Keypad',
-            color: const Color(0xFFFF7900),
-            onTap: _showManualKeypad,
-          )),
-          const SizedBox(width: 8),
-          Expanded(
-              child: _GameActionButton(
-            icon: Icons.camera_alt_rounded,
-            label: _cameraReady ? 'Capture Sign' : 'Camera',
-            color: const Color(0xFF1268EA),
-            onTap: _cameraReady ? _captureFrame : _startCamera,
-          )),
+          Row(
+            children: [
+              Expanded(
+                  child: _GameActionButton(
+                icon: Icons.calculate_rounded,
+                label: 'Manual Keypad',
+                color: const Color(0xFFFF7900),
+                onTap: _showManualKeypad,
+              )),
+              const SizedBox(width: 8),
+              Expanded(
+                  child: _GameActionButton(
+                icon: Icons.camera_alt_rounded,
+                label: _cameraReady ? 'Capture Sign' : 'Camera',
+                color: const Color(0xFF1268EA),
+                onTap: _cameraReady ? _captureFrame : _startCamera,
+              )),
+            ],
+          ),
+          if (_cameraReady) ...[
+            const SizedBox(height: 8),
+            _GameActionButton(
+              icon: Icons.check_circle_rounded,
+              label: 'Submit Answer',
+              color: const Color(0xFF1FA64A),
+              onTap: _submitCameraAnswer,
+            ),
+          ],
         ],
       ),
     );
@@ -1105,7 +1221,7 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
 
   Widget _buildCalculator() {
     const rows = [
-      ['AC', 'DEL', '%', 'x'],
+      ['AC', 'DEL', '÷', 'x'],
       ['7', '8', '9', ''],
       ['4', '5', '6', '-'],
       ['3', '2', '1', '+'],
@@ -1123,10 +1239,18 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
         // never overflow, even by a fraction of a pixel.
         final nominalButtonWidth =
             (calculatorWidth - horizontalPadding * 2 - buttonGap * 3) / 4;
-        final buttonHeight =
+        final widthBased =
             (nominalButtonWidth * 0.78 - 2.0).clamp(42.0, 54.0).toDouble();
+        // Everything except the 5 button rows: border (4), display (~80),
+        // gap under display (12), bottom padding (12) and 4 row gaps.
+        final heightBased = constraints.maxHeight.isFinite
+            ? (constraints.maxHeight - 4 - 80 - 12 - 12 - buttonGap * 4) / 5
+            : widthBased;
+        final buttonHeight =
+            math.min(widthBased, heightBased).clamp(30.0, 54.0).toDouble();
 
         return Center(
+          child: SingleChildScrollView(
           child: Container(
             width: calculatorWidth,
             padding: EdgeInsets.fromLTRB(
@@ -1217,6 +1341,7 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
                 ],
               ],
             ),
+          ),
           ),
         );
       },
@@ -1405,7 +1530,7 @@ class _CalcButton extends StatelessWidget {
   });
 
   bool get _filled =>
-      const {'AC', 'DEL', '%', 'x', '-', '+', '='}.contains(label);
+      const {'AC', 'DEL', '÷', 'x', '-', '+', '='}.contains(label);
 
   @override
   Widget build(BuildContext context) {

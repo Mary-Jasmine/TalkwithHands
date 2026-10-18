@@ -20,75 +20,88 @@ class LandingScreen extends StatelessWidget {
             builder: (context, constraints) {
               final compact =
                   constraints.maxWidth < 420 || constraints.maxHeight < 650; // Adjust compact threshold as needed
-              final logoSize = compact ? 75.0 : 92.0; // Adjust logo size for compact mode
+              final logoSize = compact ? 80.0 : 95.0; // Adjust logo size for compact mode
               final titleWidth = constraints.maxWidth.clamp(240.0, 320.0); // Adjust title width for compact mode
 
               return SingleChildScrollView(
                 padding: EdgeInsets.symmetric(
-                  horizontal: compact ? 20 : 34,// Adjust horizontal padding for compact mode
-                  vertical: compact ? 25 : 35,
+                  horizontal: compact ? 25 : 34,// Adjust horizontal padding for compact mode
+                  vertical: compact ? 125 : 35,
                 ),
                 child: ConstrainedBox(
                   constraints: BoxConstraints(
-                    minHeight: constraints.maxHeight - (compact ? 34 : 36), // Adjust for vertical padding
+                    minHeight: constraints.maxHeight - (compact ? 39 : 41), // Adjust for vertical padding
                   ),
                   child: Column( // Main column for logo, title, and button
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Align(
-                        alignment: Alignment.topLeft,
-                        child: AppLogo(size: logoSize), // Use adjusted logo size
-                      ),
-                      SizedBox(height: compact ? 160 : 196),
-                      Transform.rotate(
-                        angle: 0.0,
-                        child: Container(
-                          width: titleWidth,
-                          padding: EdgeInsets.symmetric(
-                            horizontal: compact ? 20 : 28,
-                            vertical: compact ? 34 : 46,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(22),
-                            border: Border.all(color: const Color.fromARGB(255, 0, 0, 0), width: 2.2),
-                            boxShadow: const [
-                              BoxShadow(
-                                color: Color.fromARGB(136, 216, 209, 209),
-                                offset: Offset(10, 10),
-                                blurRadius: 0,
-                              ),
-                              BoxShadow(
-                                color: Color(0x8839D8E8),
-                                spreadRadius: 2,
-                                blurRadius: 10,
-                              ),
-                            ],
-                          ),
-                          child: Transform.rotate(
+                      Stack(
+                        clipBehavior: Clip.none,
+                        alignment: Alignment.topCenter,
+                        children: [
+                          Transform.rotate(
                             angle: 0.0,
-                            child: Text(
-                              'Talk with\nHands',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: compact ? 34 : 42,
-                                height: 1.02,
-                                fontStyle: FontStyle.italic,
-                                fontWeight: FontWeight.w900,
-                                color: const Color.fromARGB(255, 0, 0, 0),
-                                shadows: const [
-                                  Shadow(
-                                    color: Color(0x55000000),
-                                    offset: Offset(0, 6),
-                                    blurRadius: 8,
+                            child: Container(
+                              width: titleWidth,
+                              padding: EdgeInsets.fromLTRB(
+                                compact ? 20 : 28,
+                                (compact ? 10 : 46) + logoSize / 2,
+                                compact ? 20 : 28,
+                                compact ? 30 : 46,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(22),
+                                border: Border.all(color: const Color.fromARGB(255, 0, 0, 0), width: 2.2),
+                                boxShadow: const [
+                                  BoxShadow(
+                                    color: Color.fromARGB(136, 216, 209, 209),
+                                    offset: Offset(10, 10),
+                                    blurRadius: 0,
+                                  ),
+                                  BoxShadow(
+                                    color: Color(0x8839D8E8),
+                                    spreadRadius: 2,
+                                    blurRadius: 10,
                                   ),
                                 ],
                               ),
+                              child: Transform.rotate(
+                                angle: 0.0,
+                                child: Text(
+                                  'Talk with\nHands',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: compact ? 32 : 40,
+                                    height: 1.02,
+                                    fontStyle: FontStyle.italic,
+                                    fontWeight: FontWeight.w900,
+                                    color: const Color.fromARGB(255, 0, 0, 0),
+                                    shadows: const [
+                                      Shadow(
+                                        color: Color(0x55000000),
+                                        offset: Offset(0, 6),
+                                        blurRadius: 8,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
-                        ),
+                          Positioned(
+                            top: -(logoSize / 2),
+                            child: AppLogo(size: logoSize),
+                          ),
+                        ],
                       ),
-                      SizedBox(height: compact ? 200 : 56),
-                      Row(
+                      SizedBox(height: compact ? 80 : 40),
+                      // Transform.translate moves ONLY the buttons down
+                      // (title box and logo stay in place). Change 40 to adjust.
+                      Transform.translate(
+                        offset: Offset(0, compact ? 30 : 40),
+                        child:
+                        Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           _LandingPillButton(
@@ -119,6 +132,7 @@ class LandingScreen extends StatelessWidget {
                             },
                           ),
                         ],
+                        ),
                       ),
                       SizedBox(height: compact ? 68 : 120),
                     ],

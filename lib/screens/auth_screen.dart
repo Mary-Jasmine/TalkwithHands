@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../ui/app_shell.dart';
+import '../services/activity_time_service.dart';
 import '../services/auth_service.dart';
 import '../services/background_music_service.dart';
 import '../ui/background_music_region.dart';
+import 'admin_analytics_screen.dart';
 import 'reset_password_screen.dart';
 import 'welcome_screen.dart';
 
@@ -22,6 +24,7 @@ class AuthScreen extends StatefulWidget {
 }
 
 class _AuthScreenState extends State<AuthScreen> {
+  static const _adminEmail = 'talkwithhands06@gmail.com';
   late AuthTab _tab;
   final _loginEmail = TextEditingController();
   final _loginPassword = TextEditingController();
@@ -33,6 +36,14 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _showRegisterPassword = false;
   bool _showRegisterConfirm = false;
   bool _loading = false;
+
+  Widget _destinationForProfile(dynamic profile) {
+    final email = profile?.email?.toString().trim().toLowerCase();
+    if (email == _adminEmail) {
+      return AdminAnalyticsScreen(userName: profile?.username ?? 'Admin');
+    }
+    return WelcomeScreen(userName: profile?.username ?? 'Student');
+  }
 
   @override
   void initState() {
@@ -104,12 +115,12 @@ class _AuthScreenState extends State<AuthScreen> {
               email: _registerEmail.text.trim(),
               password: _registerPassword.text,
             );
+      await ActivityTimeService.instance.reloadForCurrentAccount();
 
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (_) =>
-              WelcomeScreen(userName: profile.username ?? 'Student'),
+          builder: (_) => _destinationForProfile(profile),
         ),
       );
     } on AuthException catch (e) {
@@ -127,11 +138,11 @@ class _AuthScreenState extends State<AuthScreen> {
     setState(() => _loading = true);
     try {
       final profile = await AuthService().loginWithGoogle();
+      await ActivityTimeService.instance.reloadForCurrentAccount();
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (_) =>
-              WelcomeScreen(userName: profile.username ?? 'Student'),
+          builder: (_) => _destinationForProfile(profile),
         ),
       );
     } on AuthException catch (e) {
@@ -148,11 +159,11 @@ class _AuthScreenState extends State<AuthScreen> {
     setState(() => _loading = true);
     try {
       final profile = await AuthService().loginWithFacebook();
+      await ActivityTimeService.instance.reloadForCurrentAccount();
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (_) =>
-              WelcomeScreen(userName: profile.username ?? 'Student'),
+          builder: (_) => _destinationForProfile(profile),
         ),
       );
     } on AuthException catch (e) {
@@ -222,235 +233,232 @@ class _AuthScreenState extends State<AuthScreen> {
       body: BackgroundMusicRegion(
         track: BackgroundMusicTrack.page,
         child: AppBackground(
-        imageAsset: 'assets/images/home_bg_clean.png',
-        child: Column(
-          children: [
-            AppTopBar(
-              onBack: () => Navigator.of(context).pop(),
-            ),
-            Expanded(
-              child: Center(
-                child: SingleChildScrollView(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
-                  child: Container(
-                    constraints: const BoxConstraints(maxWidth: 670),
-                    padding: const EdgeInsets.fromLTRB(18, 28, 20, 10),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(25),
-                      border: Border.all(color: Colors.black, width: 2),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Text(
-                          isLogin ? 'Login' : 'Create an Account',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: Color(0xFF0072A9),
-                            fontSize: 31,
-                            fontWeight: FontWeight.w900,
-                            fontStyle: FontStyle.italic,
-                            shadows: [
-                              Shadow(
-                                color: Color(0x44000000),
-                                offset: Offset(0, 6),
-                                blurRadius: 8,
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        const Text(
-                          'Sign Language Learning',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Color(0xFF1E2430),
-                            fontSize: 17,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        const Text(
-                          'Learn, practice, and master sign language.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Color(0xFF6D7583),
-                            fontSize: 12,
-                          ),
-                        ),
-                        const SizedBox(height: 18),
-                        _SegmentTabs(
-                          current: _tab,
-                          onChanged: (tab) => setState(() => _tab = tab),
-                        ),
-                        const SizedBox(height: 18),
-                        if (!isLogin) ...[
-                          const _FieldLabel('User Name'),
-                          _AppTextField(
-                            controller: _registerName,
-                            hint: 'Username',
-                          ),
-                          const SizedBox(height: 16),
-                        ],
-                        const _FieldLabel('Email'),
-                        _AppTextField(
-                          controller: isLogin ? _loginEmail : _registerEmail,
-                          hint: 'email@example.com',
-                        ),
-                        const SizedBox(height: 16),
-                        const _FieldLabel('Password'),
-                        _AppTextField(
-                          controller:
-                              isLogin ? _loginPassword : _registerPassword,
-                          hint: 'Password',
-                          obscureText: isLogin
-                              ? !_showLoginPassword
-                              : !_showRegisterPassword,
-                          suffix: IconButton(
-                            onPressed: () {
-                              setState(() {
-                                if (isLogin) {
-                                  _showLoginPassword = !_showLoginPassword;
-                                } else {
-                                  _showRegisterPassword =
-                                      !_showRegisterPassword;
-                                }
-                              });
-                            },
-                            icon: Icon(
-                              (isLogin
-                                      ? _showLoginPassword
-                                      : _showRegisterPassword)
-                                  ? Icons.visibility_off_outlined
-                                  : Icons.visibility_outlined,
-                              color: const Color(0xFF969EAE),
+          imageAsset: 'assets/images/home_bg_clean.png',
+          child: Column(
+            children: [
+              AppTopBar(
+                onBack: () => Navigator.of(context).pop(),
+              ),
+              Expanded(
+                child: Center(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 13, vertical: 12),
+                    child: Container(
+                      constraints: const BoxConstraints(maxWidth: 670),
+                      padding: const EdgeInsets.fromLTRB(18, 28, 20, 10),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(25),
+                        border: Border.all(color: Colors.black, width: 2),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text(
+                            isLogin ? 'Login' : 'Create an Account',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Color(0xFF0072A9),
+                              fontSize: 31,
+                              fontWeight: FontWeight.w900,
+                              fontStyle: FontStyle.italic,
+                              shadows: [
+                                Shadow(
+                                  color: Color(0x44000000),
+                                  offset: Offset(0, 6),
+                                  blurRadius: 8,
+                                ),
+                              ],
                             ),
                           ),
-                        ),
-                        if (!isLogin) ...[
                           const SizedBox(height: 10),
-                          _PasswordRequirements(
-                            password: _registerPassword.text,
+                          const Text(
+                            'Sign Language Learning',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Color(0xFF1E2430),
+                              fontSize: 17,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
-                        ],
-                        if (!isLogin) ...[
-                          const SizedBox(height: 16),
-                          const _FieldLabel('Confirm Password'),
+                          const SizedBox(height: 8),
+                          const Text(
+                            'Learn, practice, and master sign language.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Color(0xFF6D7583),
+                              fontSize: 12,
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          _SegmentTabs(
+                            current: _tab,
+                            onChanged: (tab) => setState(() => _tab = tab),
+                          ),
+                          const SizedBox(height: 18),
+                          if (!isLogin) ...[
+                            const _FieldLabel('User Name'),
+                            _AppTextField(
+                              controller: _registerName,
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+                          const _FieldLabel('Email'),
                           _AppTextField(
-                            controller: _registerConfirm,
-                            hint: 'Password',
-                            obscureText: !_showRegisterConfirm,
+                            controller: isLogin ? _loginEmail : _registerEmail,
+                          ),
+                          const SizedBox(height: 16),
+                          const _FieldLabel('Password'),
+                          _AppTextField(
+                            controller:
+                                isLogin ? _loginPassword : _registerPassword,
+                            obscureText: isLogin
+                                ? !_showLoginPassword
+                                : !_showRegisterPassword,
                             suffix: IconButton(
                               onPressed: () {
                                 setState(() {
-                                  _showRegisterConfirm = !_showRegisterConfirm;
+                                  if (isLogin) {
+                                    _showLoginPassword = !_showLoginPassword;
+                                  } else {
+                                    _showRegisterPassword =
+                                        !_showRegisterPassword;
+                                  }
                                 });
                               },
                               icon: Icon(
-                                _showRegisterConfirm
+                                (isLogin
+                                        ? _showLoginPassword
+                                        : _showRegisterPassword)
                                     ? Icons.visibility_off_outlined
                                     : Icons.visibility_outlined,
                                 color: const Color(0xFF969EAE),
                               ),
                             ),
                           ),
-                        ],
-                        if (isLogin) ...[
-                          const SizedBox(height: 10),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: InkWell(
-                              onTap: _loading ? null : _forgotPassword,
-                              child: const Text(
-                                'Forgot password?',
-                                style: TextStyle(
-                                  color: Color(0xFF32B7FF),
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
+                          if (!isLogin) ...[
+                            const SizedBox(height: 10),
+                            _PasswordRequirements(
+                              password: _registerPassword.text,
+                            ),
+                          ],
+                          if (!isLogin) ...[
+                            const SizedBox(height: 16),
+                            const _FieldLabel('Confirm Password'),
+                            _AppTextField(
+                              controller: _registerConfirm,
+                              obscureText: !_showRegisterConfirm,
+                              suffix: IconButton(
+                                onPressed: () {
+                                  setState(() {
+                                    _showRegisterConfirm =
+                                        !_showRegisterConfirm;
+                                  });
+                                },
+                                icon: Icon(
+                                  _showRegisterConfirm
+                                      ? Icons.visibility_off_outlined
+                                      : Icons.visibility_outlined,
+                                  color: const Color(0xFF969EAE),
                                 ),
                               ),
                             ),
-                          ),
-                        ],
-                        const SizedBox(height: 20),
-                        SizedBox(
-                          height: 58,
-                          child: FilledButton(
-                            style: FilledButton.styleFrom(
-                              backgroundColor: const Color(0xFF31A8E8),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
+                          ],
+                          if (isLogin) ...[
+                            const SizedBox(height: 10),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: InkWell(
+                                onTap: _loading ? null : _forgotPassword,
+                                child: const Text(
+                                  'Forgot password?',
+                                  style: TextStyle(
+                                    color: Color(0xFF32B7FF),
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
                               ),
                             ),
-                            onPressed: _loading ? null : _submit,
-                            child: Text(
-                              _loading
-                                  ? 'Please wait...'
-                                  : (isLogin ? 'Login' : 'Create Account'),
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                        ),
-                        if (isLogin) ...[
+                          ],
                           const SizedBox(height: 20),
-                          const _DividerOr(),
-                          const SizedBox(height: 16),
-                          _SocialButton(
-                            icon: Icons.public,
-                            label: 'Login with Google',
-                            onTap: _loading ? null : _loginGoogle,
+                          SizedBox(
+                            height: 58,
+                            child: FilledButton(
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFF31A8E8),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                              onPressed: _loading ? null : _submit,
+                              child: Text(
+                                _loading
+                                    ? 'Please wait...'
+                                    : (isLogin ? 'Login' : 'Create Account'),
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
                           ),
-                          const SizedBox(height: 12),
-                          _SocialButton(
-                            icon: Icons.facebook,
-                            label: 'Login with Facebook',
-                            onTap: _loading ? null : _loginFacebook,
+                          if (isLogin) ...[
+                            const SizedBox(height: 20),
+                            const _DividerOr(),
+                            const SizedBox(height: 16),
+                            _SocialButton(
+                              icon: Icons.public,
+                              label: 'Login with Google',
+                              onTap: _loading ? null : _loginGoogle,
+                            ),
+                            const SizedBox(height: 12),
+                            _SocialButton(
+                              icon: Icons.facebook,
+                              label: 'Login with Facebook',
+                              onTap: _loading ? null : _loginFacebook,
+                            ),
+                          ],
+                          const SizedBox(height: 16),
+                          RichText(
+                            textAlign: TextAlign.center,
+                            text: const TextSpan(
+                              style: TextStyle(
+                                color: Color(0xFF555E6E),
+                                fontSize: 13,
+                              ),
+                              children: [
+                                TextSpan(
+                                    text:
+                                        'By continuing, you agree to Talk with Hands '),
+                                TextSpan(
+                                  text: '\n Terms of Service',
+                                  style: TextStyle(
+                                    color: Color(0xFF32B7FF),
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                TextSpan(text: ' and '),
+                                TextSpan(
+                                  text: 'Privacy Policy \n',
+                                  style: TextStyle(
+                                    color: Color(0xFF32B7FF),
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ],
-                        const SizedBox(height: 16),
-                        RichText(
-                          textAlign: TextAlign.center,
-                          text: const TextSpan(
-                            style: TextStyle(
-                              color: Color(0xFF555E6E),
-                              fontSize: 13,
-                            ),
-                            children: [
-                              TextSpan(
-                                  text:
-                                      'By continuing, you agree to Talk with Hands '),
-                              TextSpan(
-                                text: '\n Terms of Service',
-                                style: TextStyle(
-                                  color: Color(0xFF32B7FF),
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              TextSpan(text: ' and '),
-                              TextSpan(
-                                text: 'Privacy Policy \n',
-                                style: TextStyle(
-                                  color: Color(0xFF32B7FF),
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-          ],
-        ),
+            ],
+          ),
         ),
       ),
     );
@@ -705,13 +713,11 @@ class _FieldLabel extends StatelessWidget {
 
 class _AppTextField extends StatelessWidget {
   final TextEditingController controller;
-  final String hint;
   final bool obscureText;
   final Widget? suffix;
 
   const _AppTextField({
     required this.controller,
-    required this.hint,
     this.obscureText = false,
     this.suffix,
   });
@@ -723,8 +729,6 @@ class _AppTextField extends StatelessWidget {
       obscureText: obscureText,
       style: const TextStyle(color: Colors.black87),
       decoration: InputDecoration(
-        hintText: hint,
-        hintStyle: const TextStyle(color: Color(0xFF9AA2B3)),
         suffixIcon: suffix,
         filled: true,
         fillColor: Colors.white,

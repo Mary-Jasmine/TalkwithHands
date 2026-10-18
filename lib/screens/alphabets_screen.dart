@@ -182,7 +182,7 @@ class _AlphabetsScreenState extends State<AlphabetsScreen> {
                     color: Color(0xFF1500C8),
                     fontSize: 42,
                     fontWeight: FontWeight.w900,
-                    letterSpacing: 0,
+                    letterSpacing: 0, 
                     shadows: [
                       Shadow(
                         color: Colors.white,
@@ -406,7 +406,7 @@ class _AlphabetsScreenState extends State<AlphabetsScreen> {
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(vertical: 19),
-                      color: const Color(0xFF11B7CB),
+                      color:  const Color.fromARGB(255, 4, 51, 98),
                       child: Center(
                         child: _TutorialButton(
                           onTap: () {
@@ -477,7 +477,7 @@ class _TutorialButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: const Color.fromARGB(255, 7, 47, 179),
+      color:  kVividBlue,
       borderRadius: BorderRadius.circular(999),
       child: InkWell(
         onTap: onTap,

@@ -409,8 +409,8 @@ class SignClassifier {
     if (s.index && !s.middle && !s.ring && !s.pinky && !s.thumbOut) {
       return const SignResult(label: '1', confidence: 0.88, type: 'number');
     }
-    if (s.index && s.middle && !s.ring && !s.pinky && !s.thumbOut) {
-      return const SignResult(label: '2', confidence: 0.86, type: 'number');
+    if (looksLikeNumberTwo(lm)) {
+      return const SignResult(label: '2', confidence: 0.90, type: 'number');
     }
     if (s.index && s.middle && !s.ring && !s.pinky && s.thumbOut) {
       return const SignResult(label: '3', confidence: 0.84, type: 'number');
@@ -446,6 +446,32 @@ class SignClassifier {
       return const SignResult(label: '20', confidence: 0.78, type: 'number');
     }
     return null;
+  }
+
+  /// Requires a deliberate, upright two-finger handshape. This also gates
+  /// model predictions so partially open hands are not read as the number 2.
+  bool looksLikeNumberTwo(List<HandLandmark> lm) {
+    if (lm.length < 21) return false;
+    final s = _shape(lm);
+    if (!s.index || !s.middle || s.ring || s.pinky || s.thumbOut) {
+      return false;
+    }
+
+    final palm = s.palm;
+    final fingersUpright =
+        _fingerUpright(lm, 8, 6) && _fingerUpright(lm, 12, 10);
+    final foldedBack =
+        _fingerCurled(lm, 16, 14, 13) && _fingerCurled(lm, 20, 18, 17);
+    final tipsAligned = (lm[8].y - lm[12].y).abs() < 0.55 * palm;
+    final twoFingerSpread =
+        _dist(lm, 8, 12) > 0.20 * palm && _dist(lm, 8, 12) < 1.25 * palm;
+    final thumbTucked = _dist(lm, 4, 9) < 1.30 * palm;
+
+    return fingersUpright &&
+        foldedBack &&
+        tipsAligned &&
+        twoFingerSpread &&
+        thumbTucked;
   }
 
   SignResult? classifyMotionAlphabet(List<HandLandmark> lm) {

@@ -41,6 +41,11 @@ const kParchment = Color(0xFFF5E6C8);
 const kBannerRed = Color(0xFFB22222);
 const kWoodDark = Color(0xFF5C3317);
 
+// Game logo used in the header and the start modal badge.
+const List<String> kGameIconCandidates = [
+  'assets/images/guess_asl_icon.png',
+];
+
 const List<Map<String, String>> kCombinedPool = [
   {'label': 'A', 'type': 'ALPHABET'},
   {'label': 'B', 'type': 'ALPHABET'},
@@ -686,7 +691,7 @@ class _TitleBanner extends StatelessWidget {
               child: Container(
                 height: 64,
                 margin: EdgeInsets.only(left: onBack != null ? 56 : 0),
-                padding: const EdgeInsets.symmetric(horizontal: 18),
+                padding: const EdgeInsets.symmetric(horizontal: 14),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
@@ -720,8 +725,18 @@ class _TitleBanner extends StatelessWidget {
                           colors: [kElectricBlue, kAccentCyan],
                         ),
                       ),
-                      child: const Center(
-                        child: Text('🤟', style: TextStyle(fontSize: 17)),
+                      child: ClipOval(
+                        child: _AssetFallbackImage(
+                          candidates: kGameIconCandidates,
+                          fit: BoxFit.cover,
+                          fallback: () => const Center(
+                            child: Icon(
+                              Icons.sports_esports_rounded,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -732,18 +747,25 @@ class _TitleBanner extends StatelessWidget {
                           mainAxisSize: MainAxisSize.min,
                           crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
-                            ShaderMask(
-                              shaderCallback: (bounds) => const LinearGradient(
-                                colors: [Colors.white, kAccentCyan],
-                              ).createShader(bounds),
-                              child: const Text(
-                                'GUESS ASL',
-                                style: TextStyle(
-                                  fontSize: 19,
-                                  fontWeight: FontWeight.w900,
-                                  color: Colors.white,
-                                  letterSpacing: 1.2,
-                                ),
+                            // Solid white (no fading gradient) so every letter
+                            // stays fully readable; cyan glow keeps the neon look.
+                            Text(
+                              'GUESS ASL',
+                              maxLines: 1,
+                              softWrap: false,
+                              overflow: TextOverflow.visible,
+                              style: TextStyle(
+                                fontSize: 21,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.white,
+                                letterSpacing: 1.5,
+                                height: 1.15,
+                                shadows: [
+                                  Shadow(
+                                    color: kAccentCyan.withValues(alpha: 0.7),
+                                    blurRadius: 10,
+                                  ),
+                                ],
                               ),
                             ),
                             const Text(
@@ -1228,30 +1250,30 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: List.generate(kMaxLives, (i) {
+                      final alive = i < _lives;
+                      // One persistent icon per heart (no AnimatedSwitcher, no
+                      // glow Shadow) so there is never a second layer drawn on
+                      // top and the heart stays crisp. Only color + a tiny
+                      // scale animate when a life is lost / restored.
                       return Padding(
                         padding: const EdgeInsets.only(left: 4),
-                        child: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 300),
-                          transitionBuilder: (child, anim) =>
-                              ScaleTransition(scale: anim, child: child),
-                          child: i < _lives
-                              ? Icon(
-                                  Icons.favorite_rounded,
-                                  key: ValueKey('${i}_$_lives'),
-                                  color: kRed,
-                                  size: 22,
-                                  shadows: [
-                                    Shadow(
-                                        color: kRed.withValues(alpha: 0.6),
-                                        blurRadius: 8),
-                                  ],
-                                )
-                              : Icon(
-                                  Icons.favorite_border_rounded,
-                                  key: ValueKey('${i}_$_lives'),
-                                  color: Colors.white.withValues(alpha: 0.25),
-                                  size: 22,
-                                ),
+                        child: TweenAnimationBuilder<double>(
+                          tween: Tween<double>(end: alive ? 1.0 : 0.0),
+                          duration: const Duration(milliseconds: 250),
+                          curve: Curves.easeOut,
+                          builder: (context, t, _) => Transform.scale(
+                            scale: 0.85 + 0.15 * t,
+                            child: Icon(
+                              alive
+                                  ? Icons.favorite_rounded
+                                  : Icons.favorite_border_rounded,
+                              color: Color.lerp(
+                                  Colors.white.withValues(alpha: 0.25),
+                                  kRed,
+                                  t),
+                              size: 22,
+                            ),
+                          ),
                         ),
                       );
                     }),
@@ -1806,53 +1828,17 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                       : c == _selectedChoice
                           ? _TileState.wrong
                           : _TileState.idle;
-          final labelColor = switch (tileState) {
-            _TileState.correct || _TileState.wrong => Colors.white,
-            _TileState.eliminated => Colors.white70,
-            _TileState.idle => Colors.white,
-          };
-
           return SizedBox(
             width: tileSize,
             height: tileHeight,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                _ChoiceTile(
-                  state: tileState,
-                  onTap: () => _onChoiceTap(c),
-                  enabled: _selectedChoice == null &&
-                      !_gameOver &&
-                      !_gameWon &&
-                      !_eliminated.contains(c),
-                ),
-                IgnorePointer(
-                  child: Center(
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(
-                        c,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          inherit: false,
-                          color: labelColor,
-                          fontSize: 38,
-                          fontWeight: FontWeight.w900,
-                          height: 1,
-                          letterSpacing: 0,
-                          shadows: const [
-                            Shadow(
-                              color: Colors.black45,
-                              blurRadius: 3,
-                              offset: Offset(0, 1),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+            child: _ChoiceTile(
+              label: c,
+              state: tileState,
+              onTap: () => _onChoiceTap(c),
+              enabled: _selectedChoice == null &&
+                  !_gameOver &&
+                  !_gameWon &&
+                  !_eliminated.contains(c),
             ),
           );
         }
@@ -1919,7 +1905,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                         total: kCombinedPool.length,
                         mistakes: kMaxLives - _lives,
                         onRestart: _restart,
-                        onExit: widget.onExit,
+                        onExit: _exitGame,
                         revealAnim: _popCtrl,
                       ),
                     ),
@@ -1967,7 +1953,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                             'Amazing! You completed all ${kCombinedPool.length} signs! 🎉',
                         actionLabel: '🔄  Play Again',
                         onRestart: _restart,
-                        onExit: widget.onExit,
+                        onExit: _exitGame,
                         revealAnim: _winPopCtrl,
                       ),
                     ),
@@ -2011,150 +1997,9 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                   child: ScaleTransition(
                     scale: _startPromptScale,
                     child: Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 28),
+                      margin: const EdgeInsets.symmetric(horizontal: 24),
                       constraints: const BoxConstraints(maxWidth: 380),
-                      padding: const EdgeInsets.fromLTRB(26, 30, 26, 26),
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            Color(0xFF161B33),
-                            Color(0xFF0F2247),
-                            Color(0xFF0A1930),
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(32),
-                        border: Border.all(
-                          color: kAccentCyan.withValues(alpha: 0.35),
-                          width: 1.5,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: kAccentCyan.withValues(alpha: 0.28),
-                            blurRadius: 44,
-                            spreadRadius: 2,
-                          ),
-                          const BoxShadow(
-                            color: Color(0x99000000),
-                            blurRadius: 30,
-                            offset: Offset(0, 18),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // Glowing gradient badge with the hand emoji
-                          _PulsingBadge(
-                            glowColor: kAccentCyan,
-                            size: 100,
-                            child: _FloatingBob(
-                              child: Container(
-                                width: 84,
-                                height: 84,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  gradient: const LinearGradient(
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                    colors: [kElectricBlue, kAccentCyan],
-                                  ),
-                                  border: Border.all(
-                                      color: Colors.white
-                                          .withValues(alpha: 0.25),
-                                      width: 2),
-                                ),
-                                child: const Center(
-                                  child: Text('🤟',
-                                      style: TextStyle(fontSize: 40)),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 22),
-                          // Gradient headline
-                          ShaderMask(
-                            shaderCallback: (bounds) => const LinearGradient(
-                              colors: [Colors.white, kAccentCyan],
-                            ).createShader(bounds),
-                            child: const Text(
-                              'SIGN LANGUAGE',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.w900,
-                                color: Colors.white,
-                                letterSpacing: 1.5,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          const Text(
-                            'CHALLENGE',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w800,
-                              color: kAccentGold,
-                              letterSpacing: 5,
-                            ),
-                          ),
-                          const SizedBox(height: 14),
-                          Text(
-                            'Guess alphabets & numbers —\nall mixed together!',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white.withValues(alpha: 0.72),
-                              height: 1.5,
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          // Modern glass stat pills
-                          Wrap(
-                            alignment: WrapAlignment.center,
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              _modernPill('🔤', 'A–Z', kElectricBlue),
-                              _modernPill('🔢', '0–20', kAccentGold),
-                              _modernPill('❤️', '3 Lives', kRed),
-                            ],
-                          ),
-                          const SizedBox(height: 26),
-                          // Pulsing gradient CTA
-                          _PulseWrapper(
-                            child: SizedBox(
-                              width: double.infinity,
-                              child: _ModalButton(
-                                label: '▶   START GAME',
-                                gradient: const LinearGradient(
-                                  colors: [kGreen, Color(0xFF16A34A)],
-                                ),
-                                textColor: Colors.white,
-                                onTap: () {
-                                  _startPromptCtrl.reverse().then((_) {
-                                    if (!mounted) return;
-                                    setState(() => _showStartPrompt = false);
-                                    _startTimer();
-                                  });
-                                },
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 14),
-                          Text(
-                            '⏱  25s per round   ·   💡  3 hints',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 0.3,
-                              color: Colors.white.withValues(alpha: 0.38),
-                            ),
-                          ),
-                        ],
-                      ),
+                      child: _buildStartCard(),
                     ),
                   ),
                 ),
@@ -2166,27 +2011,226 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     );
   }
 
-  // Modern glass pill used on the start modal (icon + label, soft tinted
-  // fill, subtle colored border — replaces the old flat parchment pill).
-  Widget _modernPill(String icon, String label, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+  // Exit the game. While the start modal is open, the screen's PopScope blocks
+  // popping (canPop: false), so a host onExit that uses maybePop() did nothing.
+  // Close the start modal first, wait one frame for PopScope to update, then exit.
+  void _exitGame() {
+    if (_showStartPrompt) {
+      setState(() => _showStartPrompt = false);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _performExit();
+      });
+      return;
+    }
+    _performExit();
+  }
+
+  void _performExit() {
+    if (widget.onExit != null) {
+      widget.onExit!();
+      return;
+    }
+    if (Navigator.of(context).canPop()) Navigator.of(context).pop();
+  }
+
+  // Start card — same frosted-glass + cyan-glow language as the header banner,
+  // stats card and mascot bubble, so it feels like part of the game screen.
+  Widget _buildStartCard() {
+    return DecoratedBox(
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withValues(alpha: 0.55), width: 1.2),
+        borderRadius: BorderRadius.circular(32),
+        boxShadow: [
+          BoxShadow(
+            color: kAccentCyan.withValues(alpha: 0.22),
+            blurRadius: 44,
+            spreadRadius: 2,
+          ),
+          const BoxShadow(
+            color: Color(0x80000000),
+            blurRadius: 30,
+            offset: Offset(0, 18),
+          ),
+        ],
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(32),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(22, 28, 22, 22),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Colors.white.withValues(alpha: 0.14),
+                  Colors.white.withValues(alpha: 0.05),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(32),
+              border: Border.all(
+                  color: kAccentCyan.withValues(alpha: 0.3), width: 1.2),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Same gradient hand badge as the header
+                _PulsingBadge(
+                  glowColor: kAccentCyan,
+                  size: 84,
+                  child: _FloatingBob(
+                    child: Container(
+                      width: 72,
+                      height: 72,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: const LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [kElectricBlue, kAccentCyan],
+                        ),
+                        border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.25),
+                            width: 2),
+                      ),
+                      child: ClipOval(
+                        child: _AssetFallbackImage(
+                          candidates: kGameIconCandidates,
+                          fit: BoxFit.cover,
+                          fallback: () => const Center(
+                            child: Icon(
+                              Icons.sports_esports_rounded,
+                              color: Colors.white,
+                              size: 38,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                ShaderMask(
+                  shaderCallback: (bounds) => const LinearGradient(
+                    colors: [Colors.white, kAccentCyan],
+                  ).createShader(bounds),
+                  child: const Text(
+                    'GUESS ASL',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white,
+                      letterSpacing: 1.5,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                const Text(
+                  'CHALLENGE',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: kAccentGold,
+                    letterSpacing: 5,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Guess the sign — letters & numbers,\nall mixed together!',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white.withValues(alpha: 0.75),
+                    height: 1.45,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _ruleTile('⏱', '${_GameScreenState.kStartTime}s',
+                          'Per round', kAccentCyan),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _ruleTile('💡', '${_GameScreenState.kMaxHints}',
+                          'Hints', kAccentGold),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _ruleTile('❤️', '${_GameScreenState.kMaxLives}',
+                          'Lives', kRed),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 22),
+                _PulseWrapper(
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: _ModalButton(
+                      label: 'START GAME',
+                      gradient: const LinearGradient(
+                        colors: [kElectricBlue, kAccentCyan],
+                      ),
+                      glowColor: kAccentCyan,
+                      textColor: Colors.white,
+                      onTap: () {
+                        _startPromptCtrl.reverse().then((_) {
+                          if (!mounted) return;
+                          setState(() => _showStartPrompt = false);
+                          _startTimer();
+                        });
+                      },
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: _GhostButton(
+                    label: 'Exit',
+                    color: Colors.white,
+                    onTap: _exitGame,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Small glass stat tile (emoji + big value + label) — same look as the
+  // stat chips on the result modals.
+  Widget _ruleTile(String emoji, String value, String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withValues(alpha: 0.4), width: 1.2),
+      ),
+      child: Column(
         children: [
-          Text(icon, style: const TextStyle(fontSize: 13)),
-          const SizedBox(width: 5),
+          Text(emoji, style: const TextStyle(fontSize: 18)),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w900,
+              color: color,
+            ),
+          ),
           Text(
             label,
             style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
-              color: color,
+              fontSize: 10.5,
+              fontWeight: FontWeight.w700,
+              color: Colors.white.withValues(alpha: 0.55),
             ),
           ),
         ],
@@ -2201,11 +2245,13 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
 enum _TileState { idle, correct, wrong, eliminated }
 
 class _ChoiceTile extends StatefulWidget {
+  final String label;
   final _TileState state;
   final VoidCallback onTap;
   final bool enabled;
 
   const _ChoiceTile({
+    required this.label,
     required this.state,
     required this.onTap,
     required this.enabled,
@@ -2246,6 +2292,18 @@ class _ChoiceTileState extends State<_ChoiceTile>
     }
   }
 
+  Color get _borderColor {
+    switch (widget.state) {
+      case _TileState.eliminated:
+        return Colors.white.withValues(alpha: 0.22);
+      case _TileState.idle:
+        return kAccentCyan.withValues(alpha: 0.35);
+      case _TileState.correct:
+      case _TileState.wrong:
+        return Colors.transparent;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isEliminated = widget.state == _TileState.eliminated;
@@ -2266,54 +2324,47 @@ class _ChoiceTileState extends State<_ChoiceTile>
           scale: Tween<double>(begin: 1.0, end: 0.96).animate(
             CurvedAnimation(parent: _press, curve: Curves.easeOut),
           ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(22),
-            child: Material(
+          // ONE layer only: the tile background and its letter live in the
+          // same widget, so they always scale / recolor together and nothing
+          // is drawn underneath or on top of another choice.
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            decoration: BoxDecoration(
               color: _bgColor,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 350),
-                decoration: BoxDecoration(
-                  color: _bgColor,
-                  borderRadius: BorderRadius.circular(22),
-                  border: isEliminated
-                      ? Border.all(
-                          color: Colors.white.withValues(alpha: 0.22), width: 1.5)
-                      : widget.state == _TileState.idle
-                          ? Border.all(
-                              color: kAccentCyan.withValues(alpha: 0.35),
-                              width: 1.5)
-                          : Border.all(color: Colors.transparent, width: 2),
-                  boxShadow: isEliminated
-                      ? []
-                      : [
-                          BoxShadow(
-                            color: (widget.state == _TileState.idle
-                                    ? kAccentCyan
-                                    : _bgColor)
-                                .withValues(alpha: widget.state == _TileState.idle ? 0.18 : 0.35),
-                            blurRadius: 14,
-                            offset: const Offset(0, 5),
-                          )
-                        ],
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(
+                  color: _borderColor,
+                  width: widget.state == _TileState.idle || isEliminated ? 1.5 : 2),
+            ),
+            child: Center(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  widget.label,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    inherit: false,
+                    color: isEliminated
+                        ? Colors.white.withValues(alpha: 0.28)
+                        : Colors.white,
+                    fontSize: 38,
+                    fontWeight: FontWeight.w900,
+                    height: 1,
+                    letterSpacing: 0,
+                    decoration: isEliminated
+                        ? TextDecoration.lineThrough
+                        : TextDecoration.none,
+                    decorationColor: Colors.white.withValues(alpha: 0.5),
+                    decorationThickness: 2.5,
+                  ),
                 ),
-                child: isEliminated
-                    ? Center(
-                        child: Container(
-                          width: 48,
-                          height: 2.5,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.35),
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                        ),
-                      )
-                    : const SizedBox.expand(),
               ),
+            ),
           ),
         ),
       ),
-    ));
-    }
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2368,31 +2419,42 @@ class _BlinkingCursorState extends State<_BlinkingCursor>
 // leaderboard, and a floating idle bob on top of the entrance bounce.
 // ─────────────────────────────────────────────────────────────────────────────
 class _ResultTheme {
-  final Color primary;
-  final Color secondary;
-  final Color glow;
+  final Color primary; // borders, chips, badge
+  final Color secondary; // badge gradient end
+  final Color glow; // card + badge glow
+  final Color titleAccent; // end color of the title gradient
+  final Color ctaA; // restart button gradient
+  final Color ctaB;
   final _ParticleShape particleShape;
 
   const _ResultTheme({
     required this.primary,
     required this.secondary,
     required this.glow,
+    required this.titleAccent,
+    required this.ctaA,
+    required this.ctaB,
     required this.particleShape,
   });
 }
 
+// Dark frosted-glass result card (same language as the header / stats card /
+// start modal). Win and defeat share the layout but get their own colors,
+// badge, and "hero" widget (stars on win, progress + broken hearts on loss).
 class _ResultModal extends StatelessWidget {
   final Animation<double> revealAnim;
   final _ResultTheme theme;
   final String bannerTitle;
   final String badgeEmoji;
-  final String cornerEmoji;
+  final String? cornerEmoji;
   final String subtitle;
   final String scoreLabel;
   final int score;
   final int completed;
   final int total;
   final int mistakes;
+  final Widget extra;
+  final bool showStats;
   final VoidCallback onRestart;
   final VoidCallback? onExit;
   final String restartLabel;
@@ -2402,15 +2464,17 @@ class _ResultModal extends StatelessWidget {
     required this.theme,
     required this.bannerTitle,
     required this.badgeEmoji,
-    required this.cornerEmoji,
     required this.subtitle,
     required this.scoreLabel,
     required this.score,
     required this.completed,
     required this.total,
     required this.mistakes,
+    required this.extra,
     required this.onRestart,
     required this.restartLabel,
+    this.cornerEmoji,
+    this.showStats = true,
     this.onExit,
   });
 
@@ -2424,7 +2488,7 @@ class _ResultModal extends StatelessWidget {
   Widget build(BuildContext context) {
     return _FloatingBob(
       child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 26),
+        margin: const EdgeInsets.symmetric(horizontal: 24),
         constraints: const BoxConstraints(maxWidth: 380),
         child: Stack(
           clipBehavior: Clip.none,
@@ -2432,216 +2496,194 @@ class _ResultModal extends StatelessWidget {
           children: [
             // ── Card body ──
             Container(
-              margin: const EdgeInsets.only(top: 38),
+              margin: const EdgeInsets.only(top: 44),
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Colors.white, theme.primary.withValues(alpha: 0.06)],
-                ),
-                borderRadius: BorderRadius.circular(30),
-                border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.6), width: 1.5),
+                borderRadius: BorderRadius.circular(32),
                 boxShadow: [
                   BoxShadow(
-                    color: theme.secondary.withValues(alpha: 0.35),
+                    color: theme.glow.withValues(alpha: 0.30),
                     blurRadius: 44,
                     spreadRadius: 2,
-                    offset: const Offset(0, 18),
                   ),
                   const BoxShadow(
-                    color: Color(0x33000000),
-                    blurRadius: 18,
-                    offset: Offset(0, 6),
+                    color: Color(0x99000000),
+                    blurRadius: 30,
+                    offset: Offset(0, 18),
                   ),
                 ],
               ),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(30),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const SizedBox(height: 42),
-                    // ── Title ──
-                    _FadeSlideIn(
-                      animation: revealAnim,
-                      start: 0.1,
-                      end: 0.5,
-                      child: Text(
-                        bannerTitle,
-                        style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w900,
-                          color: theme.secondary,
-                          letterSpacing: 2.5,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    _FadeSlideIn(
-                      animation: revealAnim,
-                      start: 0.2,
-                      end: 0.55,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 28),
-                        child: Text(
-                          subtitle,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: kDeepNavy.withValues(alpha: 0.55),
-                            height: 1.4,
+                borderRadius: BorderRadius.circular(32),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                  child: Container(
+                    padding: const EdgeInsets.fromLTRB(22, 52, 22, 24),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Color.alphaBlend(
+                            theme.primary.withValues(alpha: 0.20),
+                            const Color(0xFF161B33),
                           ),
-                        ),
+                          const Color(0xFF0F2247),
+                          const Color(0xFF0A1930),
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(32),
+                      border: Border.all(
+                        color: theme.primary.withValues(alpha: 0.45),
+                        width: 1.5,
                       ),
                     ),
-                    const SizedBox(height: 18),
-
-                    // ── Score pill (scale-in + count-up) ──
-                    _FadeSlideIn(
-                      animation: revealAnim,
-                      start: 0.3,
-                      end: 0.65,
-                      child: _ScaleIn(
-                        animation: revealAnim,
-                        start: 0.3,
-                        end: 0.7,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 26, vertical: 9),
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                                colors: [theme.primary, theme.secondary]),
-                            borderRadius: BorderRadius.circular(30),
-                            boxShadow: [
-                              BoxShadow(
-                                color: theme.primary.withValues(alpha: 0.5),
-                                blurRadius: 16,
-                                spreadRadius: 1,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // ── Title ──
+                        _FadeSlideIn(
+                          animation: revealAnim,
+                          start: 0.1,
+                          end: 0.5,
+                          child: ShaderMask(
+                            shaderCallback: (bounds) => LinearGradient(
+                              colors: [Colors.white, theme.titleAccent],
+                            ).createShader(bounds),
+                            child: Text(
+                              bannerTitle,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                fontSize: 27,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.white,
+                                letterSpacing: 2.5,
                               ),
-                            ],
+                            ),
                           ),
+                        ),
+                        const SizedBox(height: 6),
+                        _FadeSlideIn(
+                          animation: revealAnim,
+                          start: 0.2,
+                          end: 0.55,
+                          child: Text(
+                            subtitle,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white.withValues(alpha: 0.7),
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+
+                        // ── Hero extra (stars on win / progress on loss) ──
+                        _FadeSlideIn(
+                          animation: revealAnim,
+                          start: 0.38,
+                          end: 0.72,
+                          child: extra,
+                        ),
+                        const SizedBox(height: 16),
+
+                        if (showStats) ...[
+                        // ── Stat chips ──
+                        _FadeSlideIn(
+                          animation: revealAnim,
+                          start: 0.42,
+                          end: 0.76,
                           child: Row(
-                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text(
-                                '$scoreLabel  ',
-                                style: const TextStyle(
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.w900,
-                                  color: Colors.white,
-                                  letterSpacing: 1,
+                              Expanded(
+                                child: _StatChip(
+                                  emoji: '🎯',
+                                  value: '$_accuracy%',
+                                  label: 'Accuracy',
+                                  color: theme.primary,
                                 ),
                               ),
-                              _CountUpNumber(
-                                value: score,
-                                style: const TextStyle(
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.w900,
-                                  color: Colors.white,
-                                  letterSpacing: 1,
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: _StatChip(
+                                  emoji: '✅',
+                                  value: '$completed/$total',
+                                  label: 'Completed',
+                                  color: theme.primary,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: _StatChip(
+                                  emoji: '💔',
+                                  value: '$mistakes',
+                                  label: 'Mistakes',
+                                  color: theme.primary,
                                 ),
                               ),
                             ],
                           ),
                         ),
-                      ),
-                    ),
-                    const SizedBox(height: 18),
+                        const SizedBox(height: 16),
+                        ],
 
-                    // ── Stat chips: Accuracy / Completed ──
-                    _FadeSlideIn(
-                      animation: revealAnim,
-                      start: 0.35,
-                      end: 0.7,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 24),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: _StatChip(
-                                emoji: '🎯',
-                                value: '$_accuracy%',
-                                label: 'Accuracy',
-                                color: theme.secondary,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: _StatChip(
-                                emoji: '✅',
-                                value: '$completed/$total',
-                                label: 'Completed',
-                                color: theme.secondary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-
-                    // ── Leaderboard ──
-                    _FadeSlideIn(
-                      animation: revealAnim,
-                      start: 0.45,
-                      end: 0.8,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 24),
-                        child: Column(
-                          children: [
-                            _leaderRow('🏆', "Today's Best", ScoreBoard.todayBest,
-                                kAccentGold),
-                            const SizedBox(height: 8),
-                            _leaderRow('🥈', "Week's Best", ScoreBoard.weekBest,
-                                theme.primary),
-                            const SizedBox(height: 8),
-                            _leaderRow('👑', 'All-time Best',
-                                ScoreBoard.allTimeBest, theme.secondary),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 22),
-
-                    // ── Buttons ──
-                    _FadeSlideIn(
-                      animation: revealAnim,
-                      start: 0.55,
-                      end: 0.9,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 24),
-                        child: Row(
-                          children: [
-                            if (onExit != null) ...[
-                              Expanded(
-                                child: _GhostButton(
-                                  label: 'Exit',
-                                  color: theme.secondary,
-                                  onTap: onExit!,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
+                        // ── Leaderboard ──
+                        _FadeSlideIn(
+                          animation: revealAnim,
+                          start: 0.5,
+                          end: 0.85,
+                          child: Column(
+                            children: [
+                              _leaderRow('🏆', "Today's Best",
+                                  ScoreBoard.todayBest, kAccentGold),
+                              const SizedBox(height: 8),
+                              _leaderRow('🥈', "Week's Best",
+                                  ScoreBoard.weekBest, kAccentCyan),
+                              const SizedBox(height: 8),
+                              _leaderRow('👑', 'All-time Best',
+                                  ScoreBoard.allTimeBest, theme.titleAccent),
                             ],
-                            Expanded(
-                              flex: onExit != null ? 2 : 1,
-                              child: _PulseWrapper(
-                                child: _ModalButton(
-                                  label: restartLabel,
-                                  onTap: onRestart,
-                                  gradient: LinearGradient(
-                                      colors: [theme.primary, theme.secondary]),
-                                  textColor: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 22),
+
+                        // ── Buttons ──
+                        _FadeSlideIn(
+                          animation: revealAnim,
+                          start: 0.6,
+                          end: 0.95,
+                          child: Row(
+                            children: [
+                              if (onExit != null) ...[
+                                Expanded(
+                                  child: _GhostButton(
+                                    label: 'Exit',
+                                    color: Colors.white,
+                                    onTap: onExit!,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                              ],
+                              Expanded(
+                                flex: onExit != null ? 2 : 1,
+                                child: _PulseWrapper(
+                                  child: _ModalButton(
+                                    label: restartLabel,
+                                    onTap: onRestart,
+                                    glowColor: theme.ctaA,
+                                    gradient: LinearGradient(
+                                        colors: [theme.ctaA, theme.ctaB]),
+                                    textColor: Colors.white,
+                                  ),
                                 ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
+                      ],
                     ),
-                    const SizedBox(height: 24),
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -2653,38 +2695,38 @@ class _ResultModal extends StatelessWidget {
               end: 0.5,
               offsetY: -10,
               child: _PulsingBadge(
-                size: 76,
+                size: 80,
                 glowColor: theme.glow,
                 child: Stack(
+                  clipBehavior: Clip.none,
                   alignment: Alignment.topRight,
                   children: [
                     Container(
-                      width: 76,
-                      height: 76,
+                      width: 80,
+                      height: 80,
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
-                            colors: [theme.primary, theme.secondary]),
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [theme.primary, theme.secondary],
+                        ),
                         shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 3),
-                        boxShadow: [
-                          BoxShadow(
-                            color: theme.glow.withValues(alpha: 0.5),
-                            blurRadius: 18,
-                            spreadRadius: 1,
-                          ),
-                        ],
+                        border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.35),
+                            width: 2.5),
                       ),
                       child: Center(
                         child: Text(badgeEmoji,
                             style: const TextStyle(fontSize: 38)),
                       ),
                     ),
-                    Positioned(
-                      top: -2,
-                      right: -2,
-                      child: Text(cornerEmoji,
-                          style: const TextStyle(fontSize: 20)),
-                    ),
+                    if (cornerEmoji != null)
+                      Positioned(
+                        top: -4,
+                        right: -4,
+                        child: Text(cornerEmoji!,
+                            style: const TextStyle(fontSize: 20)),
+                      ),
                   ],
                 ),
               ),
@@ -2699,9 +2741,9 @@ class _ResultModal extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: accent.withValues(alpha: 0.08),
+        color: accent.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: accent.withValues(alpha: 0.18)),
+        border: Border.all(color: accent.withValues(alpha: 0.28)),
       ),
       child: Row(
         children: [
@@ -2713,7 +2755,7 @@ class _ResultModal extends StatelessWidget {
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
-                color: kDeepNavy.withValues(alpha: 0.6),
+                color: Colors.white.withValues(alpha: 0.75),
               ),
             ),
           ),
@@ -2749,28 +2791,31 @@ class _StatChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFF),
+        color: color.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withValues(alpha: 0.15)),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Column(
         children: [
           Text(emoji, style: const TextStyle(fontSize: 18)),
           const SizedBox(height: 4),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w900,
-              color: kDeepNavy,
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+              ),
             ),
           ),
           Text(
             label,
             style: TextStyle(
-              fontSize: 11,
+              fontSize: 10.5,
               fontWeight: FontWeight.w700,
-              color: kDeepNavy.withValues(alpha: 0.5),
+              color: Colors.white.withValues(alpha: 0.55),
             ),
           ),
         ],
@@ -2797,8 +2842,9 @@ class _GhostButton extends StatelessWidget {
       child: Container(
         height: 48,
         decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.06),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withValues(alpha: 0.35), width: 1.5),
+          border: Border.all(color: color.withValues(alpha: 0.3), width: 1.5),
         ),
         child: Center(
           child: Text(
@@ -2806,7 +2852,7 @@ class _GhostButton extends StatelessWidget {
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w800,
-              color: color,
+              color: color.withValues(alpha: 0.85),
               letterSpacing: 0.5,
             ),
           ),
@@ -2816,7 +2862,7 @@ class _GhostButton extends StatelessWidget {
   }
 }
 
-// ── Public wrappers used by the game screen ──
+// ── WIN: gold + green, trophy badge, 1–3 star rating ──
 class _WinModal extends StatelessWidget {
   final int score;
   final int total;
@@ -2840,15 +2886,46 @@ class _WinModal extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final filled = (3 - mistakes).clamp(1, 3).toInt();
+    final stars = Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: List.generate(3, (i) {
+        final on = i < filled;
+        return Padding(
+          padding: EdgeInsets.only(top: i == 1 ? 0 : 10, left: 4, right: 4),
+          child: _ScaleIn(
+            animation: revealAnim,
+            start: 0.45 + i * 0.1,
+            end: 0.75 + i * 0.1,
+            child: Icon(
+              Icons.star_rounded,
+              size: i == 1 ? 54 : 42,
+              color: on ? kAccentGold : Colors.white.withValues(alpha: 0.16),
+              shadows: on
+                  ? [
+                      Shadow(
+                          color: kAccentGold.withValues(alpha: 0.7),
+                          blurRadius: 14),
+                    ]
+                  : null,
+            ),
+          ),
+        );
+      }),
+    );
+
     return _ResultModal(
       revealAnim: revealAnim,
       theme: const _ResultTheme(
-        primary: Color(0xFF22C55E),
-        secondary: Color(0xFF16A34A),
+        primary: kAccentGold,
+        secondary: Color(0xFFF59E0B),
         glow: kAccentGold,
+        titleAccent: kAccentGold,
+        ctaA: kGreen,
+        ctaB: Color(0xFF16A34A),
         particleShape: _ParticleShape.star,
       ),
-      bannerTitle: '🎉 YOU WIN!',
+      bannerTitle: 'YOU WIN!',
       badgeEmoji: '🏆',
       cornerEmoji: '✨',
       subtitle: message,
@@ -2857,6 +2934,7 @@ class _WinModal extends StatelessWidget {
       completed: total,
       total: total,
       mistakes: mistakes,
+      extra: stars,
       onRestart: onRestart,
       onExit: onExit,
       restartLabel: actionLabel,
@@ -2864,6 +2942,7 @@ class _WinModal extends StatelessWidget {
   }
 }
 
+// ── DEFEAT: red + purple, broken hearts, "how far you got" progress bar ──
 class _GameOverModal extends StatelessWidget {
   final int score;
   final int completed;
@@ -2885,26 +2964,91 @@ class _GameOverModal extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final progress = total == 0 ? 0.0 : (completed / total).clamp(0.0, 1.0);
+    final hero = Column(
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(
+            3,
+            (_) => Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Icon(
+                Icons.heart_broken_rounded,
+                size: 26,
+                color: kRed.withValues(alpha: 0.85),
+                shadows: [
+                  Shadow(color: kRed.withValues(alpha: 0.5), blurRadius: 10),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Container(height: 22, color: Colors.white.withValues(alpha: 0.08)),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: FractionallySizedBox(
+                  widthFactor: progress,
+                  child: Container(
+                    height: 22,
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [kAccentGold, kElectricBlue],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Text(
+                '$completed / $total signs',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                  shadows: [
+                    Shadow(
+                        color: Colors.black54,
+                        blurRadius: 3,
+                        offset: Offset(0, 1)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+
     return _ResultModal(
       revealAnim: revealAnim,
       theme: const _ResultTheme(
-        primary: kElectricBlue,
+        primary: kRed,
         secondary: Color(0xFF7C3AED),
-        glow: kAccentGold,
+        glow: kRed,
+        titleAccent: Color(0xFFFF8A8A),
+        ctaA: kElectricBlue,
+        ctaB: kAccentCyan,
         particleShape: _ParticleShape.circle,
       ),
       bannerTitle: 'GAME OVER',
-      badgeEmoji: '😉',
-      cornerEmoji: '👑',
-      subtitle: '$completed / $total signs completed',
+      badgeEmoji: '💔',
+      subtitle: 'So close! Keep practicing, you\'ve got this',
       scoreLabel: 'Score',
       score: score,
       completed: completed,
       total: total,
       mistakes: mistakes,
+      extra: hero,
+      showStats: false,
       onRestart: onRestart,
       onExit: onExit,
-      restartLabel: '🔄  Play Again',
+      restartLabel: 'Try Again',
     );
   }
 }
@@ -3316,12 +3460,14 @@ class _ModalButton extends StatefulWidget {
   final VoidCallback onTap;
   final Gradient gradient;
   final Color textColor;
+  final Color? glowColor;
 
   const _ModalButton({
     required this.label,
     required this.onTap,
     required this.gradient,
     required this.textColor,
+    this.glowColor,
   });
 
   @override
@@ -3365,8 +3511,10 @@ class _ModalButtonState extends State<_ModalButton>
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.12),
-                blurRadius: 8,
+                color: widget.glowColor != null
+                    ? widget.glowColor!.withValues(alpha: 0.45)
+                    : Colors.black.withValues(alpha: 0.12),
+                blurRadius: widget.glowColor != null ? 16 : 8,
                 offset: const Offset(0, 3),
               )
             ],

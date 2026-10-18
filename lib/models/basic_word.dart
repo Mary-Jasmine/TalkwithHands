@@ -12,6 +12,7 @@ class BasicWord {
   final String rightVideoUrl;
   final String description;
   final int sortOrder;
+  final bool isActive;
 
   const BasicWord({
     required this.id,
@@ -27,6 +28,7 @@ class BasicWord {
     required this.rightVideoUrl,
     required this.description,
     required this.sortOrder,
+    required this.isActive,
   });
 
   factory BasicWord.fromJson(Map<String, dynamic> json) {
@@ -44,6 +46,7 @@ class BasicWord {
       rightVideoUrl: (json['right_video_url'] ?? '').toString(),
       description: (json['description'] ?? '').toString(),
       sortOrder: int.tryParse((json['sort_order'] ?? '').toString()) ?? 0,
+      isActive: json['is_active'] != false,
     );
   }
 }

@@ -42,6 +42,7 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
       key: _scaffoldKey,
       endDrawer: AppMenuDrawer(
         userName: widget.userName,
+        activeScreen: 'Analytics',
         onClose: () => Navigator.of(context).pop(),
       ),
       body: AppBackground(
@@ -52,13 +53,16 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
                 onBack: () => Navigator.of(context).pop(),
                 onMenu: () => _scaffoldKey.currentState?.openEndDrawer(),
               ),
-              const Text(
-                'Analytics',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 42,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 0,
+              LayoutBuilder(
+                builder: (context, constraints) => Text(
+                  'Analytics',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: kVividBlue,
+                    fontSize: constraints.maxWidth < 390 ? 30 : 38,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0,
+                  ),
                 ),
               ),
               const SizedBox(height: 12),
@@ -103,17 +107,23 @@ class _AnalyticsContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final narrow = MediaQuery.sizeOf(context).width < 520;
     return RefreshIndicator(
       onRefresh: onRefresh,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(28, 0, 28, 28),
+        padding: EdgeInsets.fromLTRB(narrow ? 12 : 28, 0, narrow ? 12 : 28, 28),
         children: [
           Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 980),
               child: Container(
-                padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+                padding: EdgeInsets.fromLTRB(
+                  narrow ? 12 : 18,
+                  16,
+                  narrow ? 12 : 18,
+                  18,
+                ),
                 color: Colors.white,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -789,22 +799,45 @@ class _ErrorState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text(
-              message,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w800,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 460),
+        child: Container(
+          margin: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x33002693),
+                blurRadius: 18,
+                offset: Offset(0, 8),
               ),
-            ),
+            ],
           ),
-          GlassButton(label: 'Retry', onTap: onRetry),
-        ],
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.analytics_outlined,
+                color: kDeepBlue,
+                size: 42,
+              ),
+              const SizedBox(height: 14),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Color(0xFF17354C),
+                  fontWeight: FontWeight.w800,
+                  height: 1.35,
+                ),
+              ),
+              const SizedBox(height: 20),
+              GlassButton(label: 'Retry', onTap: onRetry),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -842,6 +875,23 @@ String _daysAgo(DateTime? date) {
 }
 
 String _messageFor(Object error) {
+  if (error is AdminAnalyticsUnavailableException) {
+    if (error.statusCode == 404) {
+      return 'Analytics is not available on the current server yet. '
+          'Deploy the backend version that includes /admin/analytics, then retry.';
+    }
+    if (error.statusCode != null) {
+      return 'Analytics could not be loaded right now. '
+          'Server response: ${error.statusCode}.';
+    }
+    if (error.failureType == DioExceptionType.connectionTimeout ||
+        error.failureType == DioExceptionType.receiveTimeout) {
+      return 'The analytics server at ${error.uri.host} is not responding. '
+          'Your internet connection is working, but the deployed backend needs to be restarted or redeployed.';
+    }
+    return 'The analytics server at ${error.uri.host} could not be reached. '
+        'Check the deployed backend, then retry.';
+  }
   if (error is DioException) {
     final data = error.response?.data;
     if (data is Map && data['message'] != null) {

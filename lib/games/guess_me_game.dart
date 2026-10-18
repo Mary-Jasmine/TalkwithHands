@@ -1006,7 +1006,8 @@ class _GuessMeScreenState extends State<GuessMeScreen>
             ),
             child: const _LogoWidget(),
           ),
-          AppMenuIconButton(onTap: () {}),
+          // Same width as the back button so the logo stays centered.
+          const SizedBox(width: 44, height: 44),
         ],
       ),
     );
@@ -1821,7 +1822,7 @@ class _DefeatScreenState extends State<DefeatScreen> with TickerProviderStateMix
                         ),
                       ),
                       const SizedBox(height: 20),
-                      const Text('DEFEATED',
+                      const Text('LOSE',
                         style: TextStyle(
                           color: Colors.white, fontSize: 42,
                           fontWeight: FontWeight.w900, letterSpacing: 4,
@@ -1971,15 +1972,20 @@ class _LogoWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ClipRRect(
     borderRadius: BorderRadius.circular(12),
-    child: Container(
-      color: _kBlueDark,
-      child: const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text('GUESS', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1)),
-            Text('ME?',   style: TextStyle(color: _kGold,       fontSize: 13, fontWeight: FontWeight.w900, letterSpacing: 1)),
-          ],
+    child: Image.asset(
+      'assets/images/guess_me_icon.png',
+      fit: BoxFit.cover,
+      // If the asset can't be found, fall back to the old text logo.
+      errorBuilder: (_, __, ___) => Container(
+        color: _kBlueDark,
+        child: const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text('GUESS', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1)),
+              Text('ME?',   style: TextStyle(color: _kGold,       fontSize: 13, fontWeight: FontWeight.w900, letterSpacing: 1)),
+            ],
+          ),
         ),
       ),
     ),

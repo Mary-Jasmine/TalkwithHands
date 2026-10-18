@@ -5,8 +5,15 @@ import 'package:flutter/services.dart';
 
 import '../models/basic_word.dart';
 import 'api_config.dart';
+import '../utils/video_url_utils.dart';
 
 class BasicWordService {
+  static const _excludedCategories = {
+    'alphabet',
+    'alphabets',
+    'number',
+    'numbers'
+  };
   final Dio _dio;
 
   BasicWordService._(this._dio);
@@ -40,6 +47,47 @@ class BasicWordService {
     } catch (_) {
       return _loadBundledBasicWords();
     }
+  }
+
+  Future<List<BasicWord>> listAllBasicWords() async {
+    final res = await _dio.get('/basic-words/admin');
+    final data = res.data;
+    if (data is! List) {
+      throw Exception('Invalid basic words admin response from server.');
+    }
+    return _parseAndSort(data);
+  }
+
+  Future<BasicWord> createBasicWord(Map<String, dynamic> payload) async {
+    final res = await _dio.post('/basic-words', data: payload);
+    return BasicWord.fromJson(Map<String, dynamic>.from(res.data as Map));
+  }
+
+  Future<BasicWord> updateBasicWord(
+    String id,
+    Map<String, dynamic> payload,
+  ) async {
+    final res = await _dio.patch('/basic-words/$id', data: payload);
+    return BasicWord.fromJson(Map<String, dynamic>.from(res.data as Map));
+  }
+
+  Future<void> deleteBasicWord(String id) async {
+    await _dio.delete('/basic-words/$id');
+  }
+
+  /// Matches the records users can actually open in Basic Words.
+  static bool isVisibleToUsers(BasicWord word) {
+    if (!word.isActive ||
+        _excludedCategories.contains(word.category.trim().toLowerCase())) {
+      return false;
+    }
+    return hasPlayableVideoSource(
+      videoAsset: word.videoAsset,
+      videoUrl: word.videoUrl,
+      frontVideoUrl: word.frontVideoUrl,
+      leftVideoUrl: word.leftVideoUrl,
+      rightVideoUrl: word.rightVideoUrl,
+    );
   }
 
   Future<List<BasicWord>> _loadBundledBasicWords() async {

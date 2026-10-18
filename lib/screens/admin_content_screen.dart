@@ -3,20 +3,59 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../models/alphabet_sign.dart';
+import '../models/basic_word.dart';
 import '../models/number_sign.dart';
 import '../services/admin_upload_service.dart';
 import '../services/alphabet_service.dart';
+import '../services/basic_word_service.dart';
 import '../services/number_service.dart';
 import '../ui/app_shell.dart';
 
-enum AdminContentTab { alphabets, numbers }
+enum AdminContentTab { alphabets, numbers, basicWords }
+
+extension AdminContentTabInfo on AdminContentTab {
+  String get title {
+    switch (this) {
+      case AdminContentTab.alphabets:
+        return 'ALPHABETS';
+      case AdminContentTab.numbers:
+        return 'NUMBERS';
+      case AdminContentTab.basicWords:
+        return 'BASIC WORDS';
+    }
+  }
+
+  String get shortLabel {
+    switch (this) {
+      case AdminContentTab.alphabets:
+        return 'ABC';
+      case AdminContentTab.numbers:
+        return '123';
+      case AdminContentTab.basicWords:
+        return 'WORDS';
+    }
+  }
+
+  String get keyLabel {
+    switch (this) {
+      case AdminContentTab.alphabets:
+        return 'Letter';
+      case AdminContentTab.numbers:
+        return 'Number';
+      case AdminContentTab.basicWords:
+        return 'Key';
+    }
+  }
+}
 
 class AdminContentScreen extends StatefulWidget {
   final String userName;
+  final AdminContentTab initialTab;
 
   const AdminContentScreen({
     super.key,
     required this.userName,
+    this.initialTab = AdminContentTab.alphabets,
   });
 
   @override
@@ -28,19 +67,22 @@ class _AdminContentScreenState extends State<AdminContentScreen> {
   final _searchController = TextEditingController();
   final _alphabetService = AlphabetService();
   final _numberService = NumberService();
+  final _basicWordService = BasicWordService();
   final _uploadService = AdminUploadService();
 
-  AdminContentTab _tab = AdminContentTab.alphabets;
+  late AdminContentTab _tab;
   List<AdminSignItem> _items = [];
   Set<String> _selectedIds = {};
   bool _loading = true;
   bool _saving = false;
   String _query = '';
+  String? _selectedBasicWordCategory;
   String? _error;
 
   @override
   void initState() {
     super.initState();
+    _tab = widget.initialTab;
     _searchController.addListener(() {
       setState(() => _query = _searchController.text.trim().toLowerCase());
     });
@@ -61,13 +103,19 @@ class _AdminContentScreenState extends State<AdminContentScreen> {
     });
 
     try {
-      final items = _tab == AdminContentTab.alphabets
-          ? (await _alphabetService.listAllAlphabetSigns())
+      final items = switch (_tab) {
+        AdminContentTab.alphabets =>
+          (await _alphabetService.listAllAlphabetSigns())
               .map(AdminSignItem.fromAlphabet)
-              .toList()
-          : (await _numberService.listAllNumberSigns())
-              .map(AdminSignItem.fromNumber)
-              .toList();
+              .toList(),
+        AdminContentTab.numbers => (await _numberService.listAllNumberSigns())
+            .map(AdminSignItem.fromNumber)
+            .toList(),
+        AdminContentTab.basicWords => (await _basicWordService.listBasicWords())
+            .where(BasicWordService.isVisibleToUsers)
+            .map(AdminSignItem.fromBasicWord)
+            .toList(),
+      };
       if (!mounted) return;
       setState(() => _items = items);
     } catch (e) {
@@ -79,12 +127,19 @@ class _AdminContentScreenState extends State<AdminContentScreen> {
   }
 
   List<AdminSignItem> get _filteredItems {
-    if (_query.isEmpty) return _items;
-    return _items.where((item) {
+    final items = _items.where((item) {
+      if (_tab == AdminContentTab.basicWords &&
+          _selectedBasicWordCategory != null &&
+          item.category != _selectedBasicWordCategory) {
+        return false;
+      }
+      if (_query.isEmpty) return true;
       return item.label.toLowerCase().contains(_query) ||
           item.title.toLowerCase().contains(_query) ||
+          item.category.toLowerCase().contains(_query) ||
           item.description.toLowerCase().contains(_query);
-    }).toList();
+    });
+    return items.toList();
   }
 
   Future<void> _deleteSelected() async {
@@ -108,10 +163,13 @@ class _AdminContentScreenState extends State<AdminContentScreen> {
     setState(() => _saving = true);
     try {
       for (final id in _selectedIds) {
-        if (_tab == AdminContentTab.alphabets) {
-          await _alphabetService.deleteAlphabetSign(id);
-        } else {
-          await _numberService.deleteNumberSign(id);
+        switch (_tab) {
+          case AdminContentTab.alphabets:
+            await _alphabetService.deleteAlphabetSign(id);
+          case AdminContentTab.numbers:
+            await _numberService.deleteNumberSign(id);
+          case AdminContentTab.basicWords:
+            await _basicWordService.deleteBasicWord(id);
         }
       }
       await _load();
@@ -133,16 +191,22 @@ class _AdminContentScreenState extends State<AdminContentScreen> {
         uploadService: _uploadService,
         onSave: (payload) async {
           if (item == null) {
-            if (_tab == AdminContentTab.alphabets) {
-              await _alphabetService.createAlphabetSign(payload);
-            } else {
-              await _numberService.createNumberSign(payload);
+            switch (_tab) {
+              case AdminContentTab.alphabets:
+                await _alphabetService.createAlphabetSign(payload);
+              case AdminContentTab.numbers:
+                await _numberService.createNumberSign(payload);
+              case AdminContentTab.basicWords:
+                await _basicWordService.createBasicWord(payload);
             }
           } else {
-            if (_tab == AdminContentTab.alphabets) {
-              await _alphabetService.updateAlphabetSign(item.id, payload);
-            } else {
-              await _numberService.updateNumberSign(item.id, payload);
+            switch (_tab) {
+              case AdminContentTab.alphabets:
+                await _alphabetService.updateAlphabetSign(item.id, payload);
+              case AdminContentTab.numbers:
+                await _numberService.updateNumberSign(item.id, payload);
+              case AdminContentTab.basicWords:
+                await _basicWordService.updateBasicWord(item.id, payload);
             }
           }
         },
@@ -162,21 +226,16 @@ class _AdminContentScreenState extends State<AdminContentScreen> {
     );
   }
 
-  void _switchTab(AdminContentTab tab) {
-    if (_tab == tab) return;
-    setState(() => _tab = tab);
-    _load();
-  }
-
   @override
   Widget build(BuildContext context) {
-    final title = _tab == AdminContentTab.alphabets ? 'ALPHABETS' : 'NUMBERS';
     final selectedCount = _selectedIds.length;
+    final canManageBasicWords = _tab == AdminContentTab.basicWords;
 
     return Scaffold(
       key: _scaffoldKey,
       endDrawer: AppMenuDrawer(
         userName: widget.userName,
+        activeScreen: _tab.title,
         onClose: () => Navigator.of(context).pop(),
       ),
       body: AppBackground(
@@ -187,24 +246,29 @@ class _AdminContentScreenState extends State<AdminContentScreen> {
                 onBack: () => Navigator.of(context).pop(),
                 onMenu: () => _scaffoldKey.currentState?.openEndDrawer(),
               ),
-              Text(
-                'ADMIN $title',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 40,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 0,
+              LayoutBuilder(
+                builder: (context, constraints) => Text(
+                  'ADMIN ${_tab.title}',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: kVividBlue,
+                    fontSize: constraints.maxWidth < 390 ? 28 : 36,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0,
+                  ),
                 ),
               ),
               const SizedBox(height: 12),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 28),
+                padding: EdgeInsets.symmetric(
+                  horizontal: MediaQuery.sizeOf(context).width < 520 ? 16 : 28,
+                ),
                 child: _Toolbar(
                   controller: _searchController,
                   tab: _tab,
                   selectedCount: selectedCount,
                   saving: _saving,
-                  onTabChanged: _switchTab,
+                  canManage: canManageBasicWords,
                   onAdd: () => _openEditor(),
                   onDelete: selectedCount == 0 ? null : _deleteSelected,
                 ),
@@ -232,12 +296,19 @@ class _AdminContentScreenState extends State<AdminContentScreen> {
       );
     }
 
+    if (_tab == AdminContentTab.basicWords &&
+        _query.isEmpty &&
+        _selectedBasicWordCategory == null) {
+      return _buildBasicWordCategoryGrid();
+    }
+
     final items = _filteredItems;
     if (items.isEmpty) {
       return _AdminStateMessage(
         message: 'No matching records found.',
-        actionLabel: 'Add item',
-        onAction: () => _openEditor(),
+        actionLabel: _tab == AdminContentTab.basicWords ? 'Add item' : 'Retry',
+        onAction:
+            _tab == AdminContentTab.basicWords ? () => _openEditor() : _load,
       );
     }
 
@@ -251,43 +322,167 @@ class _AdminContentScreenState extends State<AdminContentScreen> {
                   ? 5
                   : constraints.maxWidth >= 640
                       ? 4
-                      : 3;
+                      : constraints.maxWidth >= 430
+                          ? 3
+                          : 2;
           final gap = constraints.maxWidth >= 900 ? 18.0 : 12.0;
+          final horizontalPadding = constraints.maxWidth < 520 ? 16.0 : 28.0;
+          final contentWidth =
+              constraints.maxWidth > 1100 ? 1100.0 : constraints.maxWidth;
           final itemWidth =
-              (constraints.maxWidth - 56 - gap * (columns - 1)) / columns;
+              (contentWidth - horizontalPadding * 2 - gap * (columns - 1)) /
+                  columns;
 
           return ListView(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(28, 0, 28, 28),
+            padding: EdgeInsets.fromLTRB(
+              horizontalPadding,
+              0,
+              horizontalPadding,
+              28,
+            ),
             children: [
-              Wrap(
-                spacing: gap,
-                runSpacing: 18,
-                children: items.map((item) {
-                  final selected = _selectedIds.contains(item.id);
-                  return SizedBox(
-                    width: itemWidth.clamp(108.0, 156.0),
-                    child: _AdminSignCard(
-                      item: item,
-                      selected: selected,
-                      onSelected: (value) {
-                        setState(() {
-                          if (value) {
-                            _selectedIds.add(item.id);
-                          } else {
-                            _selectedIds.remove(item.id);
-                          }
-                        });
-                      },
-                      onEdit: () => _openEditor(item),
+              if (_tab == AdminContentTab.basicWords &&
+                  _selectedBasicWordCategory != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 14),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: () =>
+                          setState(() => _selectedBasicWordCategory = null),
+                      icon: const Icon(Icons.arrow_back_rounded),
+                      label: Text(_selectedBasicWordCategory!),
+                      style: TextButton.styleFrom(
+                        foregroundColor: kVividBlue,
+                        textStyle: const TextStyle(fontWeight: FontWeight.w900),
+                      ),
                     ),
-                  );
-                }).toList(),
+                  ),
+                ),
+              Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 1100),
+                  child: Wrap(
+                    spacing: gap,
+                    runSpacing: 18,
+                    children: items.map((item) {
+                      final selected = _selectedIds.contains(item.id);
+                      return SizedBox(
+                        width: itemWidth,
+                        child: _AdminSignCard(
+                          item: item,
+                          selected: selected,
+                          selectable: _tab == AdminContentTab.basicWords,
+                          onSelected: (value) {
+                            setState(() {
+                              if (value) {
+                                _selectedIds.add(item.id);
+                              } else {
+                                _selectedIds.remove(item.id);
+                              }
+                            });
+                          },
+                          onEdit: () => _openEditor(item),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
               ),
             ],
           );
         },
       ),
+    );
+  }
+
+  Widget _buildBasicWordCategoryGrid() {
+    final categories = _items
+        .map((item) => item.category.trim())
+        .where((category) => category.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+    final width = MediaQuery.sizeOf(context).width;
+    final columns = width >= 900
+        ? 4
+        : width >= 600
+            ? 3
+            : 2;
+    final padding = width < 520 ? 16.0 : 28.0;
+    final contentWidth = width > 980 ? 980.0 : width;
+    final gap = 14.0;
+    final cardWidth =
+        (contentWidth - padding * 2 - gap * (columns - 1)) / columns;
+
+    if (categories.isEmpty) {
+      return _AdminStateMessage(
+        message: 'No user-visible basic words with tutorial videos yet.',
+        actionLabel: 'Add item',
+        onAction: () => _openEditor(),
+      );
+    }
+
+    return ListView(
+      padding: EdgeInsets.fromLTRB(padding, 0, padding, 28),
+      children: [
+        Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 980),
+            child: Wrap(
+              spacing: gap,
+              runSpacing: gap,
+              children: categories.map((category) {
+                final count =
+                    _items.where((item) => item.category == category).length;
+                return SizedBox(
+                  width: cardWidth,
+                  child: InkWell(
+                    onTap: () =>
+                        setState(() => _selectedBasicWordCategory = category),
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      height: 106,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: const Color(0xFFB8DFF5)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(Icons.category_outlined,
+                              color: kVividBlue, size: 26),
+                          const Spacer(),
+                          Text(
+                            category,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: kVividBlue,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          Text(
+                            '$count words',
+                            style: const TextStyle(
+                              color: Color(0xFF5E6F7F),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -297,7 +492,7 @@ class _Toolbar extends StatelessWidget {
   final AdminContentTab tab;
   final int selectedCount;
   final bool saving;
-  final ValueChanged<AdminContentTab> onTabChanged;
+  final bool canManage;
   final VoidCallback onAdd;
   final VoidCallback? onDelete;
 
@@ -306,7 +501,7 @@ class _Toolbar extends StatelessWidget {
     required this.tab,
     required this.selectedCount,
     required this.saving,
-    required this.onTabChanged,
+    required this.canManage,
     required this.onAdd,
     required this.onDelete,
   });
@@ -315,26 +510,27 @@ class _Toolbar extends StatelessWidget {
   Widget build(BuildContext context) {
     final compact = MediaQuery.sizeOf(context).width < 720;
     final search = _SearchField(controller: controller);
-    final actions = Wrap(
-      spacing: 10,
-      runSpacing: 10,
-      alignment: WrapAlignment.end,
-      children: [
-        _SegmentedTabs(tab: tab, onChanged: onTabChanged),
-        _AdminButton(
-          icon: Icons.add_rounded,
-          label: 'Add',
-          color: const Color(0xFF28D944),
-          onTap: saving ? null : onAdd,
-        ),
-        _AdminButton(
-          icon: Icons.delete_rounded,
-          label: selectedCount == 0 ? 'Delete' : 'Delete $selectedCount',
-          color: const Color(0xFFFF3B3B),
-          onTap: saving ? null : onDelete,
-        ),
-      ],
-    );
+    final actions = canManage
+        ? Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            alignment: WrapAlignment.end,
+            children: [
+              _AdminButton(
+                icon: Icons.add_rounded,
+                label: 'Add ${tab.shortLabel}',
+                color: const Color(0xFF28D944),
+                onTap: saving ? null : onAdd,
+              ),
+              _AdminButton(
+                icon: Icons.delete_rounded,
+                label: selectedCount == 0 ? 'Delete' : 'Delete $selectedCount',
+                color: const Color(0xFFFF3B3B),
+                onTap: saving ? null : onDelete,
+              ),
+            ],
+          )
+        : const SizedBox.shrink();
 
     if (compact) {
       return Column(
@@ -349,84 +545,11 @@ class _Toolbar extends StatelessWidget {
     return Row(
       children: [
         Expanded(child: search),
-        const SizedBox(width: 16),
-        actions,
-      ],
-    );
-  }
-}
-
-class _SegmentedTabs extends StatelessWidget {
-  final AdminContentTab tab;
-  final ValueChanged<AdminContentTab> onChanged;
-
-  const _SegmentedTabs({
-    required this.tab,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 38,
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: Colors.black, width: 1.4),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _TabPill(
-            label: 'ABC',
-            selected: tab == AdminContentTab.alphabets,
-            onTap: () => onChanged(AdminContentTab.alphabets),
-          ),
-          _TabPill(
-            label: '123',
-            selected: tab == AdminContentTab.numbers,
-            onTap: () => onChanged(AdminContentTab.numbers),
-          ),
+        if (canManage) ...[
+          const SizedBox(width: 16),
+          actions,
         ],
-      ),
-    );
-  }
-}
-
-class _TabPill extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _TabPill({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(999),
-      child: Container(
-        width: 54,
-        height: 30,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: selected ? const Color(0xFF62D9D8) : Colors.transparent,
-          borderRadius: BorderRadius.circular(999),
-        ),
-        child: Text(
-          label,
-          style: const TextStyle(
-            color: Colors.black,
-            fontWeight: FontWeight.w900,
-            fontSize: 12,
-          ),
-        ),
-      ),
+      ],
     );
   }
 }
@@ -527,12 +650,14 @@ class _AdminButton extends StatelessWidget {
 class _AdminSignCard extends StatelessWidget {
   final AdminSignItem item;
   final bool selected;
+  final bool selectable;
   final ValueChanged<bool> onSelected;
   final VoidCallback onEdit;
 
   const _AdminSignCard({
     required this.item,
     required this.selected,
+    required this.selectable,
     required this.onSelected,
     required this.onEdit,
   });
@@ -552,25 +677,32 @@ class _AdminSignCard extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Row(
-            children: [
-              SizedBox(
-                width: 26,
-                height: 26,
-                child: Checkbox(
-                  value: selected,
-                  onChanged: (value) => onSelected(value ?? false),
-                  activeColor: const Color(0xFF28D944),
-                  checkColor: Colors.black,
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          if (selectable)
+            Row(
+              children: [
+                SizedBox(
+                  width: 26,
+                  height: 26,
+                  child: Checkbox(
+                    value: selected,
+                    onChanged: (value) => onSelected(value ?? false),
+                    activeColor: const Color(0xFF28D944),
+                    checkColor: Colors.black,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
                 ),
-              ),
-              const Spacer(),
-              if (!item.isActive)
-                const Icon(Icons.visibility_off_rounded,
-                    color: Colors.black54, size: 18),
-            ],
-          ),
+                const Spacer(),
+                if (!item.isActive)
+                  const Icon(Icons.visibility_off_rounded,
+                      color: Colors.black54, size: 18),
+              ],
+            )
+          else if (!item.isActive)
+            const Align(
+              alignment: Alignment.centerRight,
+              child: Icon(Icons.visibility_off_rounded,
+                  color: Colors.black54, size: 18),
+            ),
           Expanded(
             child: Container(
               width: double.infinity,
@@ -642,11 +774,15 @@ class _SignImage extends StatelessWidget {
       );
     }
 
-    return Image.asset(
-      item.imageAsset,
-      fit: BoxFit.contain,
-      errorBuilder: (_, __, ___) => _ImageFallback(label: item.label),
-    );
+    if (item.imageAsset.isNotEmpty) {
+      return Image.asset(
+        item.imageAsset,
+        fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) => _ImageFallback(label: item.label),
+      );
+    }
+
+    return _ImageFallback(label: item.label);
   }
 }
 
@@ -691,10 +827,14 @@ class _SignEditorDialogState extends State<_SignEditorDialog> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _keyController;
   late final TextEditingController _titleController;
+  late final TextEditingController _categoryController;
   late final TextEditingController _imageAssetController;
   late final TextEditingController _imageUrlController;
   late final TextEditingController _videoAssetController;
   late final TextEditingController _videoUrlController;
+  late final TextEditingController _frontVideoUrlController;
+  late final TextEditingController _leftVideoUrlController;
+  late final TextEditingController _rightVideoUrlController;
   late final TextEditingController _descriptionController;
   late final TextEditingController _sortOrderController;
   bool _active = true;
@@ -706,9 +846,10 @@ class _SignEditorDialogState extends State<_SignEditorDialog> {
   void initState() {
     super.initState();
     final item = widget.item;
-    final nextSort = widget.tab == AdminContentTab.alphabets ? '1' : '1';
+    const nextSort = '1';
     _keyController = TextEditingController(text: item?.label ?? '');
     _titleController = TextEditingController(text: item?.title ?? '');
+    _categoryController = TextEditingController(text: item?.category ?? '');
     _imageAssetController = TextEditingController(
       text: item?.imageAsset ?? _defaultImageAsset(),
     );
@@ -717,6 +858,12 @@ class _SignEditorDialogState extends State<_SignEditorDialog> {
       text: item?.videoAsset ?? _defaultVideoAsset(),
     );
     _videoUrlController = TextEditingController(text: item?.videoUrl ?? '');
+    _frontVideoUrlController =
+        TextEditingController(text: item?.frontVideoUrl ?? '');
+    _leftVideoUrlController =
+        TextEditingController(text: item?.leftVideoUrl ?? '');
+    _rightVideoUrlController =
+        TextEditingController(text: item?.rightVideoUrl ?? '');
     _descriptionController =
         TextEditingController(text: item?.description ?? '');
     _sortOrderController =
@@ -728,10 +875,14 @@ class _SignEditorDialogState extends State<_SignEditorDialog> {
   void dispose() {
     _keyController.dispose();
     _titleController.dispose();
+    _categoryController.dispose();
     _imageAssetController.dispose();
     _imageUrlController.dispose();
     _videoAssetController.dispose();
     _videoUrlController.dispose();
+    _frontVideoUrlController.dispose();
+    _leftVideoUrlController.dispose();
+    _rightVideoUrlController.dispose();
     _descriptionController.dispose();
     _sortOrderController.dispose();
     super.dispose();
@@ -740,7 +891,9 @@ class _SignEditorDialogState extends State<_SignEditorDialog> {
   String _defaultImageAsset() {
     return widget.tab == AdminContentTab.alphabets
         ? 'assets/images/alphabets/A.png'
-        : 'assets/images/numbers/1.png';
+        : widget.tab == AdminContentTab.numbers
+            ? 'assets/images/numbers/1.png'
+            : '';
   }
 
   String _defaultVideoAsset() {
@@ -788,6 +941,18 @@ class _SignEditorDialogState extends State<_SignEditorDialog> {
 
   Future<void> _submit() async {
     if (_saving || !_formKey.currentState!.validate()) return;
+    if (widget.tab == AdminContentTab.basicWords &&
+        _videoAssetController.text.trim().isEmpty &&
+        _videoUrlController.text.trim().isEmpty &&
+        _frontVideoUrlController.text.trim().isEmpty &&
+        _leftVideoUrlController.text.trim().isEmpty &&
+        _rightVideoUrlController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Add at least one sign video before saving.')),
+      );
+      return;
+    }
 
     setState(() => _saving = true);
     try {
@@ -803,6 +968,18 @@ class _SignEditorDialogState extends State<_SignEditorDialog> {
     }
   }
 
+  String? _validateBasicWordCategory(String? value) {
+    final category = value?.trim() ?? '';
+    if (category.isEmpty) return 'Required';
+    final normalized = category.toLowerCase();
+    if (normalized == 'alphabet' ||
+        normalized == 'number' ||
+        normalized == 'numbers') {
+      return 'Use a word category, not Alphabet or Number.';
+    }
+    return null;
+  }
+
   Map<String, dynamic> _payload() {
     final sortOrder = int.parse(_sortOrderController.text.trim());
     final common = {
@@ -816,24 +993,33 @@ class _SignEditorDialogState extends State<_SignEditorDialog> {
       'is_active': _active,
     };
 
-    if (widget.tab == AdminContentTab.alphabets) {
-      return {
-        ...common,
-        'letter': _keyController.text.trim().toUpperCase(),
-      };
+    switch (widget.tab) {
+      case AdminContentTab.alphabets:
+        return {
+          ...common,
+          'letter': _keyController.text.trim().toUpperCase(),
+        };
+      case AdminContentTab.numbers:
+        return {
+          ...common,
+          'number': int.parse(_keyController.text.trim()),
+        };
+      case AdminContentTab.basicWords:
+        return {
+          ...common,
+          'key': _keyController.text.trim().toLowerCase(),
+          'category': _categoryController.text.trim(),
+          'front_video_url': _frontVideoUrlController.text.trim(),
+          'left_video_url': _leftVideoUrlController.text.trim(),
+          'right_video_url': _rightVideoUrlController.text.trim(),
+        };
     }
-
-    return {
-      ...common,
-      'number': int.parse(_keyController.text.trim()),
-    };
   }
 
   @override
   Widget build(BuildContext context) {
     final title = widget.item == null ? 'Add' : 'Edit';
-    final keyLabel =
-        widget.tab == AdminContentTab.alphabets ? 'Letter' : 'Number';
+    final keyLabel = widget.tab.keyLabel;
 
     return Dialog(
       backgroundColor: Colors.transparent,
@@ -912,6 +1098,14 @@ class _SignEditorDialogState extends State<_SignEditorDialog> {
                         label: 'Title',
                         validator: _required,
                       ),
+                      if (widget.tab == AdminContentTab.basicWords) ...[
+                        const SizedBox(height: 12),
+                        _DialogField(
+                          controller: _categoryController,
+                          label: 'Category',
+                          validator: _validateBasicWordCategory,
+                        ),
+                      ],
                       const SizedBox(height: 12),
                       _DialogField(
                         controller: _descriptionController,
@@ -922,7 +1116,9 @@ class _SignEditorDialogState extends State<_SignEditorDialog> {
                       _DialogField(
                         controller: _imageAssetController,
                         label: 'Image asset path',
-                        validator: _required,
+                        validator: widget.tab == AdminContentTab.basicWords
+                            ? null
+                            : _required,
                       ),
                       const SizedBox(height: 12),
                       _UploadRow(
@@ -943,6 +1139,23 @@ class _SignEditorDialogState extends State<_SignEditorDialog> {
                         uploading: _uploadingVideo,
                         onUpload: () => _pickAndUpload(image: false),
                       ),
+                      if (widget.tab == AdminContentTab.basicWords) ...[
+                        const SizedBox(height: 12),
+                        _DialogField(
+                          controller: _frontVideoUrlController,
+                          label: 'Front video URL (optional)',
+                        ),
+                        const SizedBox(height: 12),
+                        _DialogField(
+                          controller: _leftVideoUrlController,
+                          label: 'Left video URL (optional)',
+                        ),
+                        const SizedBox(height: 12),
+                        _DialogField(
+                          controller: _rightVideoUrlController,
+                          label: 'Right video URL (optional)',
+                        ),
+                      ],
                       SwitchListTile(
                         contentPadding: EdgeInsets.zero,
                         value: _active,
@@ -990,6 +1203,11 @@ class _SignEditorDialogState extends State<_SignEditorDialog> {
     final text = value?.trim() ?? '';
     if (widget.tab == AdminContentTab.alphabets) {
       return RegExp(r'^[A-Za-z]$').hasMatch(text) ? null : 'Use A-Z';
+    }
+    if (widget.tab == AdminContentTab.basicWords) {
+      return RegExp(r'^[a-zA-Z0-9_-]+$').hasMatch(text)
+          ? null
+          : 'Use letters, numbers, _ or -';
     }
     final number = int.tryParse(text);
     return number != null && number >= 0 && number <= 999 ? null : 'Use 0-999';
@@ -1262,6 +1480,10 @@ class AdminSignItem {
   final String imageUrl;
   final String videoAsset;
   final String videoUrl;
+  final String frontVideoUrl;
+  final String leftVideoUrl;
+  final String rightVideoUrl;
+  final String category;
   final String description;
   final int sortOrder;
   final bool isActive;
@@ -1274,6 +1496,10 @@ class AdminSignItem {
     required this.imageUrl,
     required this.videoAsset,
     required this.videoUrl,
+    this.frontVideoUrl = '',
+    this.leftVideoUrl = '',
+    this.rightVideoUrl = '',
+    required this.category,
     required this.description,
     required this.sortOrder,
     required this.isActive,
@@ -1288,6 +1514,7 @@ class AdminSignItem {
       imageUrl: sign.imageUrl,
       videoAsset: sign.videoAsset,
       videoUrl: sign.videoUrl,
+      category: '',
       description: sign.description,
       sortOrder: sign.sortOrder,
       isActive: sign.isActive,
@@ -1303,9 +1530,29 @@ class AdminSignItem {
       imageUrl: sign.imageUrl,
       videoAsset: sign.videoAsset,
       videoUrl: sign.videoUrl,
+      category: '',
       description: sign.description,
       sortOrder: sign.sortOrder,
       isActive: sign.isActive,
+    );
+  }
+
+  factory AdminSignItem.fromBasicWord(BasicWord word) {
+    return AdminSignItem(
+      id: word.id,
+      label: word.key,
+      title: word.title,
+      imageAsset: word.imageAsset,
+      imageUrl: word.imageUrl,
+      videoAsset: word.videoAsset,
+      videoUrl: word.videoUrl,
+      frontVideoUrl: word.frontVideoUrl,
+      leftVideoUrl: word.leftVideoUrl,
+      rightVideoUrl: word.rightVideoUrl,
+      category: word.category,
+      description: word.description,
+      sortOrder: word.sortOrder,
+      isActive: word.isActive,
     );
   }
 }

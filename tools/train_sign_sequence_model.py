@@ -1,8 +1,8 @@
 """
-Train an LSTM model for dynamic/motion ASL signs.
+Train a Conv1D model for dynamic/motion ASL signs.
 
 Input:  data/sign_sequences.csv
-        Each row: label, then 30 frames × 21 landmarks × 3 coords = 1890 values
+        Each row: label, then 30 frames x 21 landmarks x 3 coords = 1890 values
 
 Output: assets/ml/sign_sequence_classifier.tflite
         assets/ml/sequence_labels.txt
@@ -17,6 +17,7 @@ import os
 import numpy as np
 import pandas as pd
 
+
 def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument('--csv',     default='data/sign_sequences.csv')
@@ -26,45 +27,58 @@ def parse_args():
     p.add_argument('--batch',   type=int, default=32)
     return p.parse_args()
 
+
 LANDMARKS = 21
 COORDS    = 3  # x, y, z
 
-def normalize_sequence(seq):
+LABEL_ALIASES = {
+    'birds': 'bird',
+    'cats': 'cat',
+    'monkeys': 'monkey',
+    'pigs': 'pig',
+    'snakes': 'snake',
+    'reciept': 'receipt',
+    'recieve': 'receive',
+}
+
+
+def normalize_label(label):
+    cleaned = ' '.join(str(label).strip().replace('_', ' ').split()).lower()
+    if len(cleaned) == 1 and cleaned.isalpha():
+        return cleaned.upper()
+    return LABEL_ALIASES.get(cleaned, cleaned)
+
+
+def prepare_sequence(seq):
     """
-    Wrist-relative normalization applied frame-by-frame.
-    seq: (frames, 63) float array
-    returns: same shape, normalized
+    Keep raw landmark coordinates for the sequence model.
+
+    Static alphabet/number recognition benefits from wrist-relative hand shape,
+    but Basic Words often need location. Signs such as father, mother, and
+    thank you can have similar hand shapes while occurring in different parts
+    of the signing space, so the sequence model preserves x/y/z coordinates.
     """
-    out = np.empty_like(seq)
-    for f in range(seq.shape[0]):
-        frame = seq[f].reshape(LANDMARKS, COORDS)
-        wrist = frame[0].copy()
-        frame -= wrist
-        scale = np.max(np.linalg.norm(frame, axis=1))
-        if scale < 1e-4:
-            scale = 1e-4
-        frame /= scale
-        out[f] = frame.flatten()
-    return out
+    return np.nan_to_num(seq, nan=0.0, posinf=0.0, neginf=0.0)
+
 
 def main():
     args = parse_args()
 
-    # ── Load CSV ──────────────────────────────────────────────────────────────
-    print(f'Loading {args.csv} …')
-    df = pd.read_csv(args.csv)
+    # -- Load CSV ------------------------------------------------------------
+    print(f'Loading {args.csv} ...')
+    df = pd.read_csv(args.csv, low_memory=False)
 
     expected_cols = 1 + args.frames * LANDMARKS * COORDS   # label + values
     if df.shape[1] != expected_cols:
         raise ValueError(
-            f'Expected {expected_cols} columns (label + {args.frames} frames × '
-            f'{LANDMARKS} landmarks × {COORDS} coords), got {df.shape[1]}.'
+            f'Expected {expected_cols} columns (label + {args.frames} frames x '
+            f'{LANDMARKS} landmarks x {COORDS} coords), got {df.shape[1]}.'
         )
 
-    labels_col = df.iloc[:, 0].astype(str).str.strip()
+    labels_col = df.iloc[:, 0].map(normalize_label)
     values     = df.iloc[:, 1:].values.astype(np.float32)
 
-    # ── Labels ────────────────────────────────────────────────────────────────
+    # -- Labels --------------------------------------------------------------
     label_names = sorted(labels_col.unique().tolist())
     label_to_idx = {lbl: i for i, lbl in enumerate(label_names)}
     y = np.array([label_to_idx[l] for l in labels_col], dtype=np.int32)
@@ -74,42 +88,50 @@ def main():
     for lbl in label_names:
         print(f'  {lbl}: {(labels_col == lbl).sum()}')
 
-    # ── Normalize + reshape → (samples, frames, 63) ───────────────────────────
+    # -- Prepare + reshape -> (samples, frames, 63) --------------------------
     n_features = LANDMARKS * COORDS  # 63
     X = values.reshape(-1, args.frames, n_features)
-    X_norm = np.array([normalize_sequence(seq) for seq in X], dtype=np.float32)
+    X_seq = np.array([prepare_sequence(seq) for seq in X], dtype=np.float32)
 
-    # ── Train/val split ───────────────────────────────────────────────────────
+    # -- Train/val split -----------------------------------------------------
     import tensorflow as tf
     from sklearn.model_selection import train_test_split
 
-    # Works with any number of samples — no minimum required
     n_samples = len(y)
     if n_samples < 10:
-        # Too few — use all for training, skip validation
-        X_train, X_val, y_train, y_val = X_norm, X_norm, y, y
-        print(f'Warning: Only {n_samples} samples — skipping validation split.')
+        # Too few - use all for training, skip validation
+        X_train, X_val, y_train, y_val = X_seq, X_seq, y, y
+        print(f'Warning: Only {n_samples} samples - skipping validation split.')
     else:
         test_size = 0.2 if n_samples < 50 else 0.15
         try:
             X_train, X_val, y_train, y_val = train_test_split(
-                X_norm, y, test_size=test_size, random_state=42, stratify=y
+                X_seq, y, test_size=test_size, random_state=42, stratify=y
             )
         except ValueError:
             # stratify fails if any class has only 1 sample
             X_train, X_val, y_train, y_val = train_test_split(
-                X_norm, y, test_size=test_size, random_state=42
+                X_seq, y, test_size=test_size, random_state=42
             )
-            print('Warning: stratify skipped — some labels have too few samples.')
+            print('Warning: stratify skipped - some labels have too few samples.')
 
     n_classes = len(label_names)
 
-    # ── Model ─────────────────────────────────────────────────────────────────
+    # -- Model ---------------------------------------------------------------
+    # Normalization is part of the model, so Flutter does not need extra
+    # standardization. Input stays (frames, 63); output stays (n_classes).
+    norm = tf.keras.layers.Normalization(axis=-1)
+    norm.adapt(X_train)
+
     model = tf.keras.Sequential([
         tf.keras.layers.Input(shape=(args.frames, n_features)),
-        tf.keras.layers.LSTM(128, return_sequences=True),
-        tf.keras.layers.Dropout(0.3),
-        tf.keras.layers.LSTM(64),
+        norm,
+        tf.keras.layers.Conv1D(64, 5, padding='same', activation='relu'),
+        tf.keras.layers.BatchNormalization(),
+        tf.keras.layers.MaxPooling1D(2),
+        tf.keras.layers.Conv1D(128, 3, padding='same', activation='relu'),
+        tf.keras.layers.BatchNormalization(),
+        tf.keras.layers.GlobalAveragePooling1D(),
         tf.keras.layers.Dropout(0.3),
         tf.keras.layers.Dense(64, activation='relu'),
         tf.keras.layers.Dense(n_classes, activation='softmax'),
@@ -138,28 +160,24 @@ def main():
     val_loss, val_acc = model.evaluate(X_val, y_val, verbose=0)
     print(f'\nVal accuracy: {val_acc:.3f}')
 
-    # ── Convert to TFLite ─────────────────────────────────────────────────────
+    # -- Convert to TFLite ---------------------------------------------------
     os.makedirs(args.out_dir, exist_ok=True)
 
     converter = tf.lite.TFLiteConverter.from_keras_model(model)
     converter.optimizations = [tf.lite.Optimize.DEFAULT]
-    converter.target_spec.supported_ops = [
-        tf.lite.OpsSet.TFLITE_BUILTINS,
-        tf.lite.OpsSet.SELECT_TF_OPS,
-    ]
-    converter._experimental_lower_tensor_list_ops = False
     tflite_model = converter.convert()
 
     tflite_path = os.path.join(args.out_dir, 'sign_sequence_classifier.tflite')
     with open(tflite_path, 'wb') as f:
         f.write(tflite_model)
-    print(f'Saved TFLite model → {tflite_path}')
+    print(f'Saved TFLite model -> {tflite_path}')
 
     labels_path = os.path.join(args.out_dir, 'sequence_labels.txt')
     with open(labels_path, 'w') as f:
         f.write('\n'.join(label_names))
-    print(f'Saved labels       → {labels_path}')
+    print(f'Saved labels       -> {labels_path}')
     print('\nDone! Now run: flutter pub get && flutter run')
+
 
 if __name__ == '__main__':
     main()

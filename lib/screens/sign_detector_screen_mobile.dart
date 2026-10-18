@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
@@ -105,6 +106,8 @@ const List<String> kDict = [
   'ready',
 ];
 
+const Set<String> _highRiskWordLabels = {'i love you'};
+
 enum DetectionMode { words, az, num, motion }
 
 enum MotionCategory { words, az, num }
@@ -122,7 +125,7 @@ class SignDetectorScreen extends StatefulWidget {
     this.initialMode = DetectionMode.words,
     this.lockMode = false,
     this.captureKind = CaptureKind.video,
-    this.title = 'Talk With Hands',
+    this.title = 'SIGN TO TEXT',
   });
 
   @override
@@ -187,7 +190,6 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
   List<String> _words = [];
   String _curWord = '';
   List<String> _history = [];
-  bool _speakOn = true;
 
   bool _loading = true;
   String _loadText = 'Initializing...';
@@ -206,13 +208,14 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
 
   bool get _isLockedImagePractice => widget.lockMode && !_usesVideoCapture;
 
+  bool get _isLockedWordPractice =>
+      widget.lockMode && _mode == DetectionMode.words;
+
   String get _startCaptureLabel =>
       _usesVideoCapture ? 'Start Video Capture' : 'Start Capture';
 
   String get _stopCaptureLabel =>
       _usesVideoCapture ? 'Stop Video Capture' : 'Stop Capture';
-
-  String get _captureNoun => _usesVideoCapture ? 'video' : 'image';
 
   String get _activeCaptureText =>
       _usesVideoCapture ? 'Recording video...' : 'Capturing images...';
@@ -238,7 +241,7 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
     }
     setState(() => _loadText = 'Loading hand tracker...');
     _handLandmarker = mp_hand.HandLandmarkerPlugin.create(
-      numHands: 1,
+      numHands: 2,
       minHandDetectionConfidence: 0.55,
       // GPU is the faster path for this plugin on supported Android devices.
       delegate: mp_hand.HandLandmarkerDelegate.gpu,
@@ -342,8 +345,7 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
         if (image.planes.length >= 3) {
           final handLandmarker = _handLandmarker;
           if (handLandmarker == null) return;
-          final detectedHands =
-              handLandmarker.detect(image, sensorOrientation);
+          final detectedHands = handLandmarker.detect(image, sensorOrientation);
           final maxHands = _mode == DetectionMode.words ||
                   (_mode == DetectionMode.motion &&
                       _motionCategory == MotionCategory.words)
@@ -381,8 +383,7 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
       SignResult? hit;
       final canClassify = _detectionArmed && _startCountdown == 0;
       if (canClassify && primaryHandLandmarks != null) {
-        hit =
-            await _classifyCurrentFrame(primaryHandLandmarks, handsLandmarks);
+        hit = await _classifyCurrentFrame(primaryHandLandmarks, handsLandmarks);
         _trackCaptureHit(hit);
       }
       if (!canClassify) {
@@ -393,7 +394,7 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
 
       // PERF FIX: Only call setState when something VISIBLE actually changed.
       // Avoid setState when hit label is same and hand presence hasn't changed.
-      final visibleHit = _detectionArmed ? null : hit;
+      final visibleHit = hit ?? _currentHit;
       final hitChanged = visibleHit?.label != _currentHit?.label;
       final handPresenceChanged =
           (displayHandLandmarks == null) != (_handLandmarks == null);
@@ -426,29 +427,48 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
     switch (_mode) {
       case DetectionMode.az:
         final ruleHit = _classifier.classifyAlphabet(primaryHandLandmarks);
-        final sequenceHit = await _tfliteClassifier
-            .pushFrameAndClassify(primaryHandLandmarks);
+        final sequenceHit = await _tfliteClassifier.pushFrameAndClassify(
+          primaryHandLandmarks,
+        );
         final tfliteHit = await _tfliteClassifier.classifyAlphabet(
           primaryHandLandmarks,
         );
         hit = _chooseAlphabetHit(ruleHit, tfliteHit, sequenceHit);
         break;
       case DetectionMode.num:
-        hit = await _tfliteClassifier.classifyNumber(primaryHandLandmarks) ??
-            _classifier.classifyNumber(primaryHandLandmarks);
+        // Sequence model handles the motion numbers 10-20;
+        // fall back to the static classifiers for 0-9.
+        final seqHit = await _tfliteClassifier.pushFrameAndClassify(
+          primaryHandLandmarks,
+        );
+        final seqNumber = seqHit == null ? null : int.tryParse(seqHit.label);
+        if (seqHit != null &&
+            seqNumber != null &&
+            seqNumber >= 10 &&
+            seqNumber <= 20) {
+          hit = SignResult(
+            label: seqHit.label,
+            confidence: seqHit.confidence,
+            type: 'number',
+            isModelConfidence: true,
+          );
+        } else {
+          final modelHit =
+              await _tfliteClassifier.classifyNumber(primaryHandLandmarks);
+          hit = modelHit?.label == '2' &&
+                  !_classifier.looksLikeNumberTwo(primaryHandLandmarks)
+              ? null
+              : modelHit ?? _classifier.classifyNumber(primaryHandLandmarks);
+        }
         break;
       case DetectionMode.words:
-        final tfliteWordHit =
-            await _tfliteClassifier.classifyWordsFromHands(handsLandmarks);
-        final sequenceHit =
-            await _tfliteClassifier.pushFrameAndClassify(primaryHandLandmarks);
-        hit = tfliteWordHit ??
-            sequenceHit ??
-            _classifier.classifyWordsFromHands(handsLandmarks);
+        final sequenceHit = await _tfliteClassifier.pushFrameAndClassify(
+          primaryHandLandmarks,
+        );
+        hit = _wordHitFromSequence(sequenceHit, primaryHandLandmarks);
         break;
       case DetectionMode.motion:
-        hit =
-            await _classifyMotionFrame(primaryHandLandmarks, handsLandmarks);
+        hit = await _classifyMotionFrame(primaryHandLandmarks, handsLandmarks);
         break;
     }
     return _acceptedHit(hit);
@@ -460,8 +480,9 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
   ) async {
     switch (_motionCategory) {
       case MotionCategory.az:
-        final sequenceHit = await _tfliteClassifier
-            .pushFrameAndClassify(primaryHandLandmarks);
+        final sequenceHit = await _tfliteClassifier.pushFrameAndClassify(
+          primaryHandLandmarks,
+        );
         if (sequenceHit != null &&
             (sequenceHit.label == 'J' || sequenceHit.label == 'Z')) {
           return SignResult(
@@ -473,20 +494,80 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
         }
         return _classifier.classifyMotionAlphabet(primaryHandLandmarks);
       case MotionCategory.num:
-        return _classifier.classifyMotionNumber(primaryHandLandmarks);
-      case MotionCategory.words:
-        final sequenceHit = await _tfliteClassifier
-            .pushFrameAndClassify(primaryHandLandmarks);
-        if (sequenceHit != null && sequenceHit.label == 'hello') {
+        final sequenceHit = await _tfliteClassifier.pushFrameAndClassify(
+          primaryHandLandmarks,
+        );
+        final sequenceNumber =
+            sequenceHit == null ? null : int.tryParse(sequenceHit.label);
+        if (sequenceHit != null &&
+            sequenceNumber != null &&
+            sequenceNumber >= 10 &&
+            sequenceNumber <= 20) {
           return SignResult(
             label: sequenceHit.label,
             confidence: sequenceHit.confidence,
-            type: 'word',
+            type: 'number',
             isModelConfidence: sequenceHit.isModelConfidence,
           );
         }
-        return _classifier.classifyMotionWordsFromHands(handsLandmarks);
+        return _classifier.classifyMotionNumber(primaryHandLandmarks);
+      case MotionCategory.words:
+        final sequenceHit = await _tfliteClassifier.pushFrameAndClassify(
+          primaryHandLandmarks,
+        );
+        return _wordHitFromSequence(sequenceHit, primaryHandLandmarks);
     }
+  }
+
+  bool _alphabetLabel(String label) => RegExp(r'^[A-Z]$').hasMatch(label);
+
+  SignResult? _wordHitFromSequence(
+    SignResult? sequenceHit,
+    List<HandLandmark> landmarks,
+  ) {
+    if (sequenceHit == null ||
+        _alphabetLabel(sequenceHit.label) ||
+        int.tryParse(sequenceHit.label) != null) {
+      return null;
+    }
+    final rawLabel = sequenceHit.label.toLowerCase();
+    if (rawLabel == 'i love you' && !_looksLikeILoveYou(landmarks)) return null;
+    return SignResult(
+      label: sequenceHit.label,
+      confidence: sequenceHit.confidence,
+      type: 'word',
+      isModelConfidence: sequenceHit.isModelConfidence,
+    );
+  }
+
+  bool _looksLikeILoveYou(List<HandLandmark> lm) {
+    if (lm.length < 21) return false;
+    final indexUp = lm[8].y < lm[6].y;
+    final middleUp = lm[12].y < lm[10].y;
+    final ringUp = lm[16].y < lm[14].y;
+    final pinkyUp = lm[20].y < lm[18].y;
+    final thumbAway =
+        (lm[4].x - lm[9].x).abs() > (lm[5].x - lm[17].x).abs() * 0.45;
+    return indexUp && pinkyUp && thumbAway && !middleUp && !ringUp;
+  }
+
+  bool _looksLikeFather(List<HandLandmark> lm) {
+    if (lm.length < 21) return false;
+    final indexUp = lm[8].y < lm[6].y;
+    final middleUp = lm[12].y < lm[10].y;
+    final ringUp = lm[16].y < lm[14].y;
+    final pinkyUp = lm[20].y < lm[18].y;
+    final thumbAway =
+        (lm[4].x - lm[9].x).abs() > (lm[5].x - lm[17].x).abs() * 0.35;
+    final fingertipsHigh = lm[8].y < 0.42 && lm[12].y < 0.42 && lm[16].y < 0.45;
+    final verticalPalm = (lm[9].y - lm[0].y).abs() > (lm[9].x - lm[0].x).abs();
+    return indexUp &&
+        middleUp &&
+        ringUp &&
+        pinkyUp &&
+        thumbAway &&
+        fingertipsHigh &&
+        verticalPalm;
   }
 
   SignResult? _chooseAlphabetHit(
@@ -503,10 +584,17 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
         isModelConfidence: sequenceHit.isModelConfidence,
       );
     }
+    if (ruleHit != null &&
+        tfliteHit != null &&
+        ((ruleHit.label == 'U' && tfliteHit.label == 'H') ||
+            (ruleHit.label == 'P' && tfliteHit.label == 'Q'))) {
+      return ruleHit;
+    }
+    if (tfliteHit != null) return tfliteHit;
     if (ruleHit != null && _ruleFirstAlphabetLabels.contains(ruleHit.label)) {
       return ruleHit;
     }
-    return tfliteHit ?? ruleHit;
+    return ruleHit;
   }
 
   SignResult? _acceptedHit(SignResult? hit) {
@@ -572,13 +660,7 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
 
   List<HandLandmark> _mapHandLandmarks(List<mp_hand.Landmark> landmarks) {
     return landmarks
-        .map(
-          (landmark) => HandLandmark(
-            landmark.x,
-            landmark.y,
-            landmark.z,
-          ),
-        )
+        .map((landmark) => HandLandmark(landmark.x, landmark.y, landmark.z))
         .toList(growable: false);
   }
 
@@ -630,8 +712,9 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
 
   void _trackCaptureHit(SignResult? hit) {
     if (hit == null) return;
-    final minimumConfidence =
-        (hit.label == 'J' || hit.label == 'Z') ? 0.70 : 0.76;
+    final minimumConfidence = (hit.label == 'J' || hit.label == 'Z')
+        ? 0.70
+        : (hit.type == 'word' && hit.isModelConfidence ? 0.25 : 0.76);
     if (hit.confidence < minimumConfidence) return;
     _captureHits.add(hit);
     if (_captureHits.length > 36) {
@@ -654,15 +737,28 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
       final topHit = hits.reduce(
         (a, b) => a.confidence >= b.confidence ? a : b,
       );
-      final repeatScore = (hits.length / 6).clamp(0.0, 0.18);
-      final modelBonus = topHit.isModelConfidence ? 0.04 : 0.0;
-      final score = topHit.confidence + repeatScore + modelBonus;
+      final isModelWord = topHit.type == 'word' && topHit.isModelConfidence;
+      // A word must be seen in several frames; one lucky frame is not enough.
+      if (isModelWord && hits.length < 3) continue;
+      final meanConfidence =
+          hits.map((h) => h.confidence).reduce((a, b) => a + b) / hits.length;
+      // Votes weighted by confidence, so the label seen most often wins.
+      final score = isModelWord
+          ? hits.length * meanConfidence
+          : topHit.confidence +
+              (hits.length / 6).clamp(0.0, 0.18) +
+              (topHit.isModelConfidence ? 0.04 : 0.0);
       if (score > bestScore) {
         bestScore = score;
         best = topHit;
       }
     }
-    return best;
+    if (best != null) return best;
+    final onlyModelWords = _captureHits.every(
+      (h) => h.type == 'word' && h.isModelConfidence,
+    );
+    if (onlyModelWords) return null; // better "try again" than a wrong word
+    return _captureHits.reduce((a, b) => a.confidence >= b.confidence ? a : b);
   }
 
   void _startSigningCountdown() {
@@ -746,6 +842,7 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
         _commitWord(label);
       }
     });
+    _tts.speak(label);
   }
 
   void _commitWord(String word) {
@@ -755,7 +852,6 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
     }
     _curWord = '';
     _addHistory(word);
-    _tts.speak(word);
   }
 
   void _addHistory(String label) {
@@ -839,8 +935,6 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
     setState(() => _commitWord(_curWord));
   }
 
-  void _speakFull() => _tts.speak(_buildSentence());
-
   void _clearAll() {
     unawaited(_stopImageStream());
     setState(() {
@@ -903,76 +997,67 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
         track: null,
         showToggle: false,
         child: Stack(
-        children: [
-          if (_cameraInitialized && _cameraController != null)
-            _buildCameraPreview()
-          else
-            Container(color: kBg),
-          if (!_isLockedImagePractice)
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 54,
-              right: 14,
-              child: _buildHistory(),
-            ),
-          if (!_isLockedImagePractice)
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 54,
-              left: 14,
-              child: _buildBadge(),
-            ),
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: _buildTopBar(),
-          ),
-          if (!_loading &&
-              !_detectionArmed &&
-              _startCountdown == 0 &&
-              _currentHit != null)
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 92,
-              left: 18,
-              right: 18,
-              child: _buildResultText(),
-            ),
-          if (!_isLockedImagePractice)
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: _buildBottomPanel(),
-            ),
-          if (_isLockedImagePractice && _detectionArmed)
-            Positioned(
-              left: 0,
-              right: 0,
-              top: MediaQuery.of(context).size.height * 0.56,
-              child: Center(
-                child: _buildCenteredStopCapture(),
+          children: [
+            if (_cameraInitialized && _cameraController != null)
+              _buildCameraPreview()
+            else
+              Container(color: kBg),
+            if (!_isLockedImagePractice)
+              Positioned(
+                top: MediaQuery.of(context).padding.top + 54,
+                right: 14,
+                child: _buildHistory(),
               ),
-            ),
-          if (_isLockedImagePractice &&
-              !_loading &&
-              !_detectionArmed &&
-              _startCountdown == 0 &&
-              _currentHit != null)
-            Positioned(
-              left: 0,
-              right: 0,
-              top: MediaQuery.of(context).size.height * 0.56,
-              child: Center(
-                child: _buildCenteredStartCapture(),
+            if (!_isLockedImagePractice)
+              Positioned(
+                top: MediaQuery.of(context).padding.top + 54,
+                left: 14,
+                child: _buildBadge(),
               ),
-            ),
-          if (!_loading &&
-              !_detectionArmed &&
-              (_buildSentence().isEmpty ||
-                  _startCountdown > 0 ||
-                  _captureMessage != null))
-            _buildStartOverlay(),
-          if (_loading) _buildLoadingOverlay(),
-        ],
+            Positioned(top: 0, left: 0, right: 0, child: _buildTopBar()),
+            if (!_loading &&
+                !_detectionArmed &&
+                _startCountdown == 0 &&
+                _currentHit != null)
+              Positioned(
+                top: MediaQuery.of(context).padding.top + 92,
+                left: 18,
+                right: 18,
+                child: _buildResultText(),
+              ),
+            if (!_isLockedImagePractice)
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: _buildBottomPanel(),
+              ),
+            if (_isLockedImagePractice && _detectionArmed)
+              Positioned(
+                left: 0,
+                right: 0,
+                top: MediaQuery.of(context).size.height * 0.56,
+                child: Center(child: _buildCenteredStopCapture()),
+              ),
+            if (_isLockedImagePractice &&
+                !_loading &&
+                !_detectionArmed &&
+                _startCountdown == 0 &&
+                _currentHit != null)
+              Positioned(
+                left: 0,
+                right: 0,
+                top: MediaQuery.of(context).size.height * 0.56,
+                child: Center(child: _buildCenteredStartCapture()),
+              ),
+            if (!_loading &&
+                !_detectionArmed &&
+                (_buildSentence().isEmpty ||
+                    _startCountdown > 0 ||
+                    _captureMessage != null))
+              _buildStartOverlay(),
+            if (_loading) _buildLoadingOverlay(),
+          ],
         ),
       ),
     );
@@ -981,26 +1066,51 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
   Widget _buildResultText() {
     final hit = _currentHit;
     if (hit == null) return const SizedBox.shrink();
+    final accuracy = '${(hit.confidence.clamp(0.0, 1.0) * 100).round()}%';
 
     return IgnorePointer(
-      child: Text(
-        hit.label.toUpperCase(),
-        textAlign: TextAlign.center,
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          color: kTeal,
-          fontSize: 34,
-          fontWeight: FontWeight.w900,
-          height: 1.05,
-          shadows: [
-            Shadow(
-              color: Colors.black.withValues(alpha: 0.9),
-              blurRadius: 14,
-              offset: const Offset(0, 3),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            hit.label.toUpperCase(),
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: kTeal,
+              fontSize: 34,
+              fontWeight: FontWeight.w900,
+              height: 1.05,
+              shadows: [
+                Shadow(
+                  color: Colors.black.withValues(alpha: 0.9),
+                  blurRadius: 14,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+          ),
+          if (_isLockedImagePractice) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+              decoration: BoxDecoration(
+                color: const Color(0xD0000000),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: kTeal, width: 1.2),
+              ),
+              child: Text(
+                'Accuracy: $accuracy',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
             ),
           ],
-        ),
+        ],
       ),
     );
   }
@@ -1185,22 +1295,6 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
           ),
           const SizedBox(width: 8),
           _TopBtn(
-            label: _speakOn ? 'Voice' : 'Muted',
-            active: _speakOn,
-            onTap: () {
-              setState(() {
-                _speakOn = !_speakOn;
-                _tts.enabled = _speakOn;
-              });
-            },
-          ),
-          const SizedBox(width: 7),
-          _TopBtn(
-            label: _camPaused ? 'Resume' : 'Pause',
-            active: !_camPaused,
-            onTap: () => _setCameraPaused(!_camPaused),
-          ),
-          _TopBtn(
             label: 'Collect',
             active: false,
             onTap: () => Navigator.push(
@@ -1240,8 +1334,8 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
                   ? 'number'
                   : 'word / phrase';
       percent = hit.isModelConfidence
-          ? '${(confidence * 100).round()}% model confidence'
-          : 'rule match';
+          ? 'Accuracy: ${(confidence * 100).round()}%'
+          : 'Rule match';
       confidenceBar = confidence;
       holdBar = _holdFrames / _holdNeed;
     }
@@ -1409,44 +1503,6 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
                     onTap: () => _setMode(DetectionMode.num),
                   ),
                 ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: _ModeBtn(
-                    label: 'Motion',
-                    active: _mode == DetectionMode.motion,
-                    onTap: () => _setMode(DetectionMode.motion),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-          ],
-          if (_mode == DetectionMode.motion) ...[
-            Row(
-              children: [
-                Expanded(
-                  child: _ModeBtn(
-                    label: 'Words',
-                    active: _motionCategory == MotionCategory.words,
-                    onTap: () => _setMotionCategory(MotionCategory.words),
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: _ModeBtn(
-                    label: 'A-Z',
-                    active: _motionCategory == MotionCategory.az,
-                    onTap: () => _setMotionCategory(MotionCategory.az),
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: _ModeBtn(
-                    label: 'Num',
-                    active: _motionCategory == MotionCategory.num,
-                    onTap: () => _setMotionCategory(MotionCategory.num),
-                  ),
-                ),
               ],
             ),
             const SizedBox(height: 8),
@@ -1489,8 +1545,10 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
                   if (spellingMode && _curWord.isNotEmpty) ...[
                     const SizedBox(width: 8),
                     Container(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
                       decoration: BoxDecoration(
                         color: const Color(0x2600E5CC),
                         border: Border.all(
@@ -1558,7 +1616,8 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
             spacing: 8,
             runSpacing: 8,
             children: [
-              _ActBtn(label: 'Delete', onTap: _deleteLast),
+              if (!_isLockedWordPractice)
+                _ActBtn(label: 'Delete', onTap: _deleteLast),
               if (spellingMode) _ActBtn(label: 'Space', onTap: _addSpace),
               if (!_detectionArmed && _startCountdown == 0)
                 _ActBtn(
@@ -1574,17 +1633,12 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
                   icon: Icons.stop_rounded,
                   onTap: _finishSigningCapture,
                 ),
-              _ActBtn(
-                label: 'Speak all',
-                accent: true,
-                icon: Icons.volume_up_rounded,
-                onTap: _speakFull,
-              ),
-              _ActBtn(
-                label: 'Clear',
-                icon: Icons.refresh_rounded,
-                onTap: _clearAll,
-              ),
+              if (!_isLockedWordPractice)
+                _ActBtn(
+                  label: 'Clear',
+                  icon: Icons.refresh_rounded,
+                  onTap: _clearAll,
+                ),
             ],
           ),
         ],
@@ -2016,10 +2070,7 @@ class _MiniBar extends StatelessWidget {
   final double value;
   final Color color;
 
-  const _MiniBar({
-    required this.value,
-    required this.color,
-  });
+  const _MiniBar({required this.value, required this.color});
 
   @override
   Widget build(BuildContext context) {
