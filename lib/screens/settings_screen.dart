@@ -18,7 +18,6 @@ const _kPrimaryBg = Color(0xFFE6F1FB); // blue tint – badges / icon bg
 const _kPrimaryDk = Color(0xFF0C447C); // dark blue – badge text
 const _kSuccess = Color(0xFF0F6E56); // teal – feedback submit
 const _kDanger = Color(0xFFA32D2D); // red – logout text/border
-const _kDangerBg = Color(0xFFFCEBEB); // red tint – logout bg
 const _kStar = Color(0xFFBA7517); // amber – filled star
 const _kStarOff = Color(0xFFD3D1C7); // gray – empty star
 const _kSurface = Colors.white;
@@ -279,48 +278,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: Colors.transparent,
-      endDrawer: AppMenuDrawer(
+      drawer: AppMenuDrawer(
         userName: _name.text.trim().isEmpty ? 'Student' : _name.text.trim(),
         onClose: () => Navigator.of(context).pop(),
         activeScreen: 'Settings',
       ),
-      body: AppBackground(
+      body: ClassroomPageBackground(
+        bannerAsset: 'assets/images/set.png',
+        showBoard: false,
+        backgroundDimOpacity: 0.12,
+        boardTopFraction: 0.40,
+        landscapeBoardTopFraction: 0.46,
         child: _loading
             ? const Center(child: CircularProgressIndicator(color: _kPrimary))
             : LayoutBuilder(builder: (context, constraints) {
                 final wide = constraints.maxWidth >= 720;
                 return Column(children: [
                   AppTopBar(
-                    onBack: () => Navigator.of(context).pop(),
-                    onMenu: () => _scaffoldKey.currentState?.openEndDrawer(),
+                    onMenu: () => _scaffoldKey.currentState?.openDrawer(),
+                    menuOnLeft: true,
                   ),
 
-                  // ── Title ────────────────────────────────────────────────
-                  Transform.translate(
-                    offset: const Offset(0, -25),
-                    child: const Padding(
-                      padding: EdgeInsets.only(top: 0, bottom: 0),
-                      child: Text(
-                        'SETTINGS',
-                        style: TextStyle(
-                          color: Color(0xFF1500C8),
-                          fontSize: 34,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 0,
-                          shadows: [
-                            Shadow(
-                              color: Colors.white,
-                              offset: Offset(3, 4),
-                              blurRadius: 6,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
+                  SizedBox(height: constraints.maxHeight * 0.005),
                   Expanded(
                     child: SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(14, 2, 14, 24),
+                      padding: EdgeInsets.fromLTRB(
+                        constraints.maxWidth * 0.06,
+                        constraints.maxHeight * 0.005,
+                        constraints.maxWidth * 0.06,
+                        constraints.maxHeight * 0.04,
+                      ),
                       child: Center(
                         child: ConstrainedBox(
                           constraints: const BoxConstraints(maxWidth: 980),
@@ -468,28 +455,31 @@ class _ProfileHero extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: Column(children: [
         // ── Cover ─────────────────────────────────────────────────────────
-        Stack(children: [
-          SizedBox(
-            height: 110,
-            width: double.infinity,
-            child: coverPhotoUrl != null && coverPhotoUrl!.isNotEmpty
-                ? _ProfileImage(
-                    value: coverPhotoUrl!,
-                    fit: BoxFit.cover,
-                    fallback: 'assets/images/PPS.jpg')
-                : Image.asset('assets/images/PPS.jpg', fit: BoxFit.cover),
-          ),
-          Positioned(
-            top: 8,
-            right: 8,
-            child: _UploadChip(
-              icon: Icons.add_photo_alternate_outlined,
-              label: 'Edit cover',
-              uploading: uploadingCover,
-              onTap: onEditCover,
+        ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+          child: Stack(children: [
+            SizedBox(
+              height: 110,
+              width: double.infinity,
+              child: coverPhotoUrl != null && coverPhotoUrl!.isNotEmpty
+                  ? _ProfileImage(
+                      value: coverPhotoUrl!,
+                      fit: BoxFit.cover,
+                      fallback: 'assets/images/PPS.jpg')
+                  : Image.asset('assets/images/PPS.jpg', fit: BoxFit.cover),
             ),
-          ),
-        ]),
+            Positioned(
+              top: 8,
+              right: 8,
+              child: _UploadChip(
+                icon: Icons.add_photo_alternate_outlined,
+                label: 'Edit cover',
+                uploading: uploadingCover,
+                onTap: onEditCover,
+              ),
+            ),
+          ]),
+        ),
         // ── Avatar + name ─────────────────────────────────────────────────
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -549,16 +539,17 @@ class _ProfileHero extends StatelessWidget {
                         color: _kPrimaryBg,
                         borderRadius: BorderRadius.circular(20),
                       ),
-                      child:
-                          const Row(mainAxisSize: MainAxisSize.min, children: [
-                        Icon(Icons.hearing_rounded,
-                            size: 14, color: _kPrimaryDk),
+                      child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(Icons.hearing_rounded, size: 14, color: _kPrimaryDk),
                         SizedBox(width: 5),
-                        Text('Deaf Community Member',
-                            style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: _kPrimaryDk)),
+                        Flexible(
+                          child: Text('Deaf Community Member',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: _kPrimaryDk)),
+                        ),
                       ]),
                     ),
                   ]),
@@ -588,8 +579,20 @@ class _UploadChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.55),
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF237AC1), Color(0xFF12477F)],
+          ),
           borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.7)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.2),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
         child: uploading
             ? const SizedBox(
@@ -603,7 +606,7 @@ class _UploadChip extends StatelessWidget {
                 Text(label,
                     style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 12,
+                        fontSize: 14,
                         fontWeight: FontWeight.w600)),
               ]),
       ),
@@ -625,7 +628,11 @@ class _SmallUploadBtn extends StatelessWidget {
         height: 26,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: _kPrimary,
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF36B9D0), Color(0xFF1559A0)],
+          ),
           border: Border.all(color: Colors.white, width: 2),
         ),
         child: uploading
@@ -690,7 +697,7 @@ class _SettingsCard extends StatelessWidget {
             const SizedBox(width: 10),
             Text(label,
                 style: const TextStyle(
-                    fontSize: 13,
+                    fontSize: 14,
                     fontWeight: FontWeight.w700,
                     color: Colors.black87)),
           ]),
@@ -734,7 +741,7 @@ class _FieldRow extends StatelessWidget {
             padding: const EdgeInsets.only(bottom: 4),
             child: Text(label,
                 style: const TextStyle(
-                    fontSize: 11,
+                    fontSize: 13,
                     fontWeight: FontWeight.w700,
                     color: Colors.black54,
                     letterSpacing: 0.5)),
@@ -879,7 +886,7 @@ class _FeedbackPanel extends StatelessWidget {
           if (rating > 0)
             Text('$rating / 5',
                 style: const TextStyle(
-                    fontSize: 13,
+                    fontSize: 14,
                     color: Colors.black54,
                     fontWeight: FontWeight.w600)),
         ]),
@@ -889,7 +896,7 @@ class _FeedbackPanel extends StatelessWidget {
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Text('Your review',
             style: TextStyle(
-                fontSize: 11,
+                fontSize: 13,
                 fontWeight: FontWeight.w700,
                 color: Colors.black54,
                 letterSpacing: 0.5)),
@@ -923,7 +930,7 @@ class _FeedbackPanel extends StatelessWidget {
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             const Text('Previous feedback',
                 style: TextStyle(
-                    fontSize: 11,
+                    fontSize: 13,
                     fontWeight: FontWeight.w700,
                     color: Colors.black54,
                     letterSpacing: 0.5)),
@@ -982,7 +989,7 @@ class _FeedbackPanel extends StatelessWidget {
                             maxLines: 3,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
-                                fontSize: 13,
+                                fontSize: 14,
                                 color: Colors.black54,
                                 height: 1.4)),
                       ],
@@ -1013,13 +1020,28 @@ class _ActionButton extends StatelessWidget {
     return Opacity(
       opacity: onTap == null ? 0.5 : 1.0,
       child: Material(
-        color: color,
+        color: Colors.transparent,
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
           onTap: onTap,
-          child: SizedBox(
+          child: Container(
             height: 48,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [color, Color.lerp(color, Colors.black, 0.24)!],
+              ),
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.25),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
             child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
               Icon(icon, color: Colors.white, size: 20),
               const SizedBox(width: 8),
@@ -1044,7 +1066,7 @@ class _LogoutButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: _kDangerBg,
+      color: Colors.transparent,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
@@ -1053,16 +1075,28 @@ class _LogoutButton extends StatelessWidget {
           width: 220,
           height: 52,
           decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFFD75A5A), Color(0xFFA32D2D)],
+            ),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: _kDanger, width: 2),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.75), width: 1.5),
+            boxShadow: [
+              BoxShadow(
+                color: _kDanger.withValues(alpha: 0.24),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
+              ),
+            ],
           ),
           child:
               const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Icon(Icons.logout_rounded, color: _kDanger, size: 22),
+            Icon(Icons.logout_rounded, color: Colors.white, size: 22),
             SizedBox(width: 10),
             Text('Log out',
                 style: TextStyle(
-                    color: _kDanger,
+                    color: Colors.white,
                     fontSize: 16,
                     fontWeight: FontWeight.w700)),
           ]),
@@ -1104,6 +1138,9 @@ class _StyledDropdown extends StatelessWidget {
       isExpanded: true,
       decoration: _inputDeco(null),
       style: const TextStyle(color: Colors.black87, fontSize: 15),
+      dropdownColor: Colors.white, // menu background (use Color(0xFFF2F2F2) for light gray)
+      borderRadius: BorderRadius.circular(10),
+      iconEnabledColor: Colors.black54,
       items: const [
         DropdownMenuItem(value: '', child: Text('Choose')),
         DropdownMenuItem(value: 'Female', child: Text('Female')),

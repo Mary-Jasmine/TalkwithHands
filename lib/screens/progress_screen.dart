@@ -51,50 +51,29 @@ class _ProgressScreenState extends State<ProgressScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       key: _scaffoldKey,
-      endDrawer: AppMenuDrawer(
+      drawer: AppMenuDrawer(
         userName: widget.userName,
         onClose: () => Navigator.of(context).pop(),
         activeScreen: 'Progress',
       ),
       body: BackgroundMusicRegion(
         track: BackgroundMusicTrack.page,
-        child: AppBackground(
+        child: ClassroomPageBackground(
+          bannerAsset: 'assets/images/pro.png',
+          boardTopFraction: 0.31,
+          landscapeBoardTopFraction: 0.46,
           child: Stack(
             children: [
-              const Positioned.fill(
-                child: IgnorePointer(
-                  child: _FloatingBubbles(),
-                ),
-              ),
               SafeArea(
                 child: Column(
                   children: [
                     // ── Top Bar ──────────────────────────────────────────────
                     AppTopBar(
-                      onBack: () => Navigator.of(context).pop(),
-                      onMenu: () => _scaffoldKey.currentState?.openEndDrawer(),
+                      onMenu: () => _scaffoldKey.currentState?.openDrawer(),
+                      menuOnLeft: true,
                     ),
 
-                    // ── Big Bold Title ───────────────────────────────────────
-                    const Padding(
-                      padding: EdgeInsets.only(top: 2, bottom: 10),
-                      child: Text(
-                        'PROGRESS',
-                        style: TextStyle(
-                          color: Color(0xFF1500C8),
-                          fontSize: 42,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 0,
-                          shadows: [
-                            Shadow(
-                              color: Colors.white,
-                              offset: Offset(3, 4),
-                              blurRadius: 6,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
+          SizedBox(height: MediaQuery.sizeOf(context).height * 0.03),
 
                     // ── Video Banner ─────────────────────────────────────────
                     // Decorative icons sit BEHIND the avatar video (added
@@ -102,31 +81,42 @@ class _ProgressScreenState extends State<ProgressScreen> {
                     // the corners so the avatar — which overflows its
                     // SizedBox a little — never covers them.
                     SizedBox(
-                      height: 128,
+                      height: MediaQuery.sizeOf(context).height < 500 ? 88 : 128,
                       child: Stack(
                         clipBehavior: Clip.none,
                         alignment: Alignment.center,
-                        children: const [
+                        children: [
                           Positioned(
-                            left: 6,
+                            // Match the partially tucked, larger shelf used
+                            // on the Alphabets screen.
+                            left: -(150.0 * 0.25),
+                            bottom: -12,
+                            child: ClassroomBookshelf(
+                              width: MediaQuery.sizeOf(context).height < 500
+                                  ? 112.0
+                                  : 150.0,
+                            ),
+                          ),
+                          Positioned(
+                            left: 64,
                             top: 4,
                             child: _BackgroundIcon(
                               icon: Icons.emoji_events_rounded,
-                              color: Color(0xFFFFB800),
+                              color: Color.fromARGB(255, 255, 221, 0),
                               size: 22,
                             ),
                           ),
                           Positioned(
-                            right: 10,
-                            top: 10,
+                            right: 54,
+                            top: 24,
                             child: _BackgroundIcon(
                               icon: Icons.auto_awesome_rounded,
-                              color: kAccent,
+                              color: const Color.fromARGB(255, 95, 237, 253),
                               size: 18,
                             ),
                           ),
                           Positioned(
-                            left: 14,
+                            left: 34,
                             bottom: 6,
                             child: _BackgroundIcon(
                               icon: Icons.star_rounded,
@@ -135,36 +125,48 @@ class _ProgressScreenState extends State<ProgressScreen> {
                             ),
                           ),
                           Positioned(
-                            right: 4,
+                            right: 22,
                             bottom: 0,
                             child: _BackgroundIcon(
                               icon: Icons.favorite_rounded,
-                              color: Color(0xFFFF6B8B),
+                              color: Color.fromARGB(255, 239, 47, 89),
                               size: 16,
                             ),
                           ),
                           Center(
-                            child: SizedBox(
-                              height: 140,
-                              width: 235,
-                              child: TransparentSignVideoOverlay(
-                                videoAsset: 'assets/Progress.mp4',
-                                fit: BoxFit.contain,
-                                volume: 0,
-                                threshold: 0.34,
-                                smoothing: 0.08,
+                            child: Transform.translate(
+                              offset: const Offset(0, 12),
+                              child: SizedBox(
+                                height: MediaQuery.sizeOf(context).height < 500
+                                    ? 92
+                                    : 140,
+                                width: MediaQuery.sizeOf(context).width * 0.6,
+                                child: TransparentSignVideoOverlay(
+                                  videoAsset: 'assets/Progress.mp4',
+                                  fit: BoxFit.contain,
+                                  volume: 0,
+                                  threshold: 0.34,
+                                  smoothing: 0.08,
+                                ),
                               ),
                             ),
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 6),
+                    SizedBox(
+                      height: MediaQuery.sizeOf(context).height * 0.04,
+                    ),
 
                     // ── Main Panel ───────────────────────────────────────────
                     Expanded(
                       child: Container(
-                        margin: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+                        margin: EdgeInsets.fromLTRB(
+                          MediaQuery.sizeOf(context).width * 0.08,
+                          0,
+                          MediaQuery.sizeOf(context).width * 0.08,
+                          MediaQuery.sizeOf(context).height * 0.04,
+                        ),
                         decoration: BoxDecoration(
                           color: const Color.fromARGB(255, 4, 51, 98)
                               .withValues(alpha: 0.18),
@@ -208,7 +210,7 @@ class _ProgressScreenState extends State<ProgressScreen> {
                                 return SingleChildScrollView(
                                   physics: const AlwaysScrollableScrollPhysics(),
                                   padding: const EdgeInsets.fromLTRB(
-                                      14, 16, 14, 20),
+                                      10, 16, 10, 20),
                                   child: _ProgressContent(
                                     firstName: _firstName,
                                     progress: snapshot.data!,
@@ -319,7 +321,11 @@ class _HeroCard extends StatelessWidget {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFF1747C4), Color(0xFF2E63E0)],
+          colors: [
+            Color(0xFF123AAB),
+            Color(0xFF2462DF),
+            Color(0xFF4385F5),
+          ],
         ),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: Colors.white24, width: 1),
@@ -348,13 +354,20 @@ class _HeroCard extends StatelessWidget {
                         color: Colors.white,
                         fontSize: 18,
                         fontWeight: FontWeight.w800,
+                        shadows: [
+                          Shadow(
+                            color: Color(0x66001855),
+                            blurRadius: 3,
+                            offset: Offset(0, 1),
+                          ),
+                        ],
                       ),
                       children: [
                         TextSpan(
                           text: 'Kumusta, ',
                           style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.85),
-                            fontWeight: FontWeight.w500,
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
                             fontSize: 16,
                             fontStyle: FontStyle.normal,
                           ),
@@ -369,10 +382,17 @@ class _HeroCard extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     'Keep up the great work!',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.75),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      shadows: [
+                        Shadow(
+                          color: Color(0x66001855),
+                          blurRadius: 3,
+                          offset: Offset(0, 1),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -445,6 +465,12 @@ class _StatsRow extends StatelessWidget {
             value: totalSignsValue,
             label: 'Signs Learned',
             color: const Color.fromARGB(255, 0, 104, 116),
+            gradientColors: const [
+              Color(0xFFBDEBFF),
+              Colors.white,
+              Color(0xFFE2D6FF),
+              Color(0xFFFFD7E9),
+            ],
           ),
         ),
         const SizedBox(width: 8),
@@ -454,6 +480,12 @@ class _StatsRow extends StatelessWidget {
             value: stats.gamesPlayed.toString(),
             label: 'Games Played',
             color: const Color.fromARGB(255, 93, 6, 151),
+            gradientColors: const [
+              Color(0xFFDCC8FF),
+              Colors.white,
+              Color.fromARGB(255, 224, 209, 255),
+              Color(0xFFBDEBFF),
+            ],
           ),
         ),
         const SizedBox(width: 8),
@@ -470,6 +502,12 @@ class _StatsRow extends StatelessWidget {
                 value: _formatDigitalTime(todayTotalSeconds),
                 label: 'Time Spent Today',
                 color: const Color.fromARGB(255, 0, 145, 37),
+                gradientColors: const [
+                  Color(0xFFBDEBFF),
+                  Colors.white,
+                  Color(0xFFBDEBFF),
+                  Color.fromARGB(255, 193, 173, 241),
+                ],
               );
             },
           ),
@@ -485,12 +523,14 @@ class _StatCard extends StatelessWidget {
   final String value;
   final String label;
   final Color color;
+  final List<Color> gradientColors;
 
   const _StatCard({
     required this.icon,
     required this.value,
     required this.label,
     required this.color,
+    required this.gradientColors,
   });
 
   @override
@@ -501,14 +541,18 @@ class _StatCard extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Colors.white, color.withValues(alpha: 0.06)],
+          colors: gradientColors,
+          stops: const [0.0, 0.42, 0.68, 1.0],
         ),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withValues(alpha: 0.12), width: 1),
+        border: Border.all(
+          color: color.withValues(alpha: 0.55),
+          width: 1.5,
+        ),
         boxShadow: [
           BoxShadow(
-            color: color.withValues(alpha: 0.14),
-            blurRadius: 10,
+            color: color.withValues(alpha: 0.22),
+            blurRadius: 13,
             offset: const Offset(0, 4),
           ),
         ],
@@ -523,10 +567,18 @@ class _StatCard extends StatelessWidget {
             height: 34,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: color.withValues(alpha: 0.14),
+              color: color,
+              border: Border.all(color: Colors.white, width: 1.5),
+              boxShadow: [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.30),
+                  blurRadius: 7,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
             alignment: Alignment.center,
-            child: Icon(icon, color: color, size: 18),
+            child: Icon(icon, color: Colors.white, size: 18),
           ),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -549,7 +601,7 @@ class _StatCard extends StatelessWidget {
                 label,
                 maxLines: 2,
                 style: const TextStyle(
-                  color: Color.fromARGB(255, 64, 72, 82),
+              color: Color(0xFF24344B),
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
                   height: 1.1,
@@ -598,6 +650,12 @@ class _SlidingChartRowState extends State<_SlidingChartRow> {
         title: 'Most Used',
         icon: Icons.donut_large_rounded,
         accent: const Color.fromARGB(255, 3, 143, 158),
+        gradientColors: const [
+          Color(0xFFBDEBFF),
+          Colors.white,
+          Color(0xFFE2D6FF),
+          Color(0xFFFFD6E8),
+        ],
         child: Row(
           children: [
             _TappableDonut(
@@ -626,7 +684,11 @@ class _SlidingChartRowState extends State<_SlidingChartRow> {
                   if (widget.usage.isEmpty)
                     const Text(
                       'No activity recorded yet.',
-                      style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                      style: TextStyle(
+                        color: Color(0xFF24344B),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                 ],
               ),
@@ -638,12 +700,24 @@ class _SlidingChartRowState extends State<_SlidingChartRow> {
         title: 'Games Played',
         icon: Icons.bar_chart_rounded,
         accent: const Color.fromARGB(255, 93, 6, 151),
+        gradientColors: const [
+          Color(0xFFDCC8FF),
+          Colors.white,
+          Color(0xFFFFD1E8),
+          Color(0xFFBDEBFF),
+        ],
         child: _GameBarChart(games: widget.games),
       ),
       _CleanCard(
         title: 'Monthly Activity',
         icon: Icons.show_chart_rounded,
         accent: const Color.fromARGB(255, 0, 157, 39),
+        gradientColors: const [
+          Color(0xFFBFEAFF),
+          Colors.white,
+          Color(0xFFBDEBFF),
+          Color(0xFFE2D6FF),
+        ],
         child: _TappableLineChart(
           monthly: widget.monthly,
           selectedIndex: _selectedLineIndex,
@@ -696,25 +770,40 @@ class _CleanCard extends StatelessWidget {
   final Widget child;
   final IconData? icon;
   final Color accent;
+  final List<Color> gradientColors;
 
   const _CleanCard({
     required this.title,
     required this.child,
     this.icon,
     this.accent = kVividBlue,
+    this.gradientColors = const [
+      Color(0xFFBFEAFF),
+      Colors.white,
+      Color(0xFFE2D6FF),
+      Color(0xFFFFD6E8),
+    ],
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color.fromARGB(179, 255, 255, 255),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: gradientColors,
+          stops: const [0.0, 0.42, 0.68, 1.0],
+        ),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFEDF1F7), width: 1),
+        border: Border.all(
+          color: accent.withValues(alpha: 0.55),
+          width: 1.5,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 10,
+            color: Colors.black.withValues(alpha: 0.16),
+            blurRadius: 14,
             offset: const Offset(0, 4),
           ),
         ],
@@ -727,14 +816,22 @@ class _CleanCard extends StatelessWidget {
             children: [
               if (icon != null) ...[
                 Container(
-                  width: 26,
-                  height: 26,
+                  width: 30,
+                  height: 30,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: accent.withValues(alpha: 0.12),
+                    color: accent,
+                    border: Border.all(color: Colors.white, width: 1.2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: accent.withValues(alpha: 0.28),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
                   ),
                   alignment: Alignment.center,
-                  child: Icon(icon, color: accent, size: 15),
+                  child: Icon(icon, color: Colors.white, size: 17),
                 ),
                 const SizedBox(width: 8),
               ],
@@ -825,7 +922,7 @@ class _EmptyProgressCard extends StatelessWidget {
         child: Text(
           'Start learning signs or playing games to record your overall progress.',
           style: TextStyle(
-            color: Color(0xFF64748B),
+            color: Color(0xFF24344B),
             height: 1.35,
             fontSize: 13,
             fontWeight: FontWeight.w500,
@@ -893,24 +990,51 @@ class _GameBar extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
-              color: Color(0xFF475569),
-              fontSize: 12,
+              color: Color(0xFF1F2937),
+              fontSize: 13,
               fontWeight: FontWeight.w800,
             ),
           ),
         ),
         const SizedBox(width: 8),
         Expanded(
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: Stack(
-              children: [
-                Container(height: 18, color: const Color(0xFFE2E8F0)),
-                FractionallySizedBox(
-                  widthFactor: fraction.clamp(0.0, 1.0),
-                  child: Container(height: 18, color: color),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: const Color(0xFF27364A), width: 1.2),
+              boxShadow: [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.36),
+                  blurRadius: 7,
+                  offset: const Offset(0, 3),
                 ),
               ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: Stack(
+                children: [
+                  Container(height: 20, color: const Color(0xFFE2E8F0)),
+                  FractionallySizedBox(
+                    widthFactor: fraction.clamp(0.0, 1.0),
+                    child: Container(
+                      height: 20,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                          colors: [color, color.withValues(alpha: 0.80)],
+                        ),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: const Color(0xFF26364A),
+                          width: 0.8,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -946,10 +1070,10 @@ String _formatDigitalTime(int totalSeconds) {
 }
 
 const _usageColors = [
-  kAccent,
-  kGreen,
+  Color(0xFF008C9E),
+  Color(0xFFEC4899),
   Color(0xFF8B3FBE),
-  Color(0xFF2196F3),
+  Color(0xFF2563EB),
 ];
 
 // ── Legend Item ───────────────────────────────────────────────────────────────
@@ -992,9 +1116,9 @@ class _LegendDot extends StatelessWidget {
             child: Text(
               label,
               style: TextStyle(
-                color: highlighted ? const Color(0xFF071A3F) : const Color(0xFF64748B),
-                fontSize: 12,
-                fontWeight: highlighted ? FontWeight.w800 : FontWeight.w600,
+                color: const Color(0xFF1F2937),
+                fontSize: 13,
+                fontWeight: highlighted ? FontWeight.w900 : FontWeight.w700,
               ),
             ),
           ),
@@ -1078,6 +1202,16 @@ class _DonutPainter extends CustomPainter {
         math.pi * 2,
         false,
         Paint()
+          ..color = const Color(0xFF27364A)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 20.4,
+      );
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: baseRadius),
+        -math.pi / 2,
+        math.pi * 2,
+        false,
+        Paint()
           ..color = const Color(0xFFE2E8F0)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 18,
@@ -1090,6 +1224,17 @@ class _DonutPainter extends CustomPainter {
       final sweep = math.pi * 2 * (usage[i].count / total);
       final isSelected = selectedIndex == i;
 
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: baseRadius),
+        start,
+        sweep,
+        false,
+        Paint()
+          ..color = const Color(0xFF27364A)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = isSelected ? 24.4 : 20.4
+          ..strokeCap = StrokeCap.butt,
+      );
       canvas.drawArc(
         Rect.fromCircle(center: center, radius: baseRadius),
         start,
@@ -1193,11 +1338,11 @@ class _TappableLineChart extends StatelessWidget {
                         style: TextStyle(
                           color: selectedIndex == i
                               ? const Color(0xFF071A3F)
-                              : const Color(0xFF64748B),
-                          fontSize: 10,
+                              : const Color(0xFF1F2937),
+                          fontSize: 11,
                           fontWeight: selectedIndex == i
-                              ? FontWeight.w800
-                              : FontWeight.w600,
+                              ? FontWeight.w900
+                              : FontWeight.w700,
                         ),
                       ),
                   ],

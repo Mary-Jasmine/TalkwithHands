@@ -234,8 +234,14 @@ class _AuthScreenState extends State<AuthScreen> {
         track: BackgroundMusicTrack.page,
         child: AppBackground(
           imageAsset: 'assets/images/home_bg_clean.png',
-          child: Column(
+          child: Stack(
+            fit: StackFit.expand,
             children: [
+              const Positioned.fill(
+                child: ColoredBox(color: Color(0xAA082C54)),
+              ),
+              Column(
+                children: [
               AppTopBar(
                 onBack: () => Navigator.of(context).pop(),
               ),
@@ -374,7 +380,7 @@ class _AuthScreenState extends State<AuthScreen> {
                                 child: const Text(
                                   'Forgot password?',
                                   style: TextStyle(
-                                    color: Color(0xFF32B7FF),
+                                    color: Color.fromARGB(255, 0, 88, 164),
                                     fontSize: 14,
                                     fontWeight: FontWeight.w600,
                                   ),
@@ -385,22 +391,72 @@ class _AuthScreenState extends State<AuthScreen> {
                           const SizedBox(height: 20),
                           SizedBox(
                             height: 58,
-                            child: FilledButton(
-                              style: FilledButton.styleFrom(
-                                backgroundColor: const Color(0xFF31A8E8),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: isLogin
+                                      ? const [
+                                          Color.fromARGB(221, 8, 129, 234),
+                                          Color.fromARGB(218, 7, 58, 168),
+                                        ]
+                                      : const [
+                                          Color(0xFFF00072),
+                                          Color(0xFFA9004E),
+                                        ],
                                 ),
+                                borderRadius: BorderRadius.circular(999),
+                                border: Border.all(
+                                    color: Colors.white, width: 1.5),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: (isLogin
+                                            ? const Color(0xFF36C9FF)
+                                            : const Color(0xFFFF5AAB))
+                                        .withValues(alpha: 0.9),
+                                    blurRadius: 20,
+                                    spreadRadius: 2,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                  const BoxShadow(
+                                    color: Color(0xDD00102E),
+                                    blurRadius: 6,
+                                    spreadRadius: 0,
+                                    offset: Offset(0, 0),
+                                  ),
+                                ],
                               ),
-                              onPressed: _loading ? null : _submit,
-                              child: Text(
-                                _loading
-                                    ? 'Please wait...'
-                                    : (isLogin ? 'Login' : 'Create Account'),
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w700,
-                                  color: Colors.white,
+                              child: FilledButton(
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: Colors.transparent,
+                                  disabledBackgroundColor: Colors.transparent,
+                                  shadowColor: Colors.transparent,
+                                  foregroundColor: Colors.white,
+                                  disabledForegroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                ),
+                                onPressed: _loading ? null : _submit,
+                                child: Text(
+                                  _loading
+                                      ? 'Please wait...'
+                                      : (isLogin
+                                          ? 'Login'
+                                          : 'Create Account'),
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w900,
+                                    color: Colors.white,
+                                    shadows: [
+                                      Shadow(
+                                        color: Color(0xCC001B36),
+                                        blurRadius: 5,
+                                        offset: Offset(0, 2),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
@@ -457,6 +513,8 @@ class _AuthScreenState extends State<AuthScreen> {
                   ),
                 ),
               ),
+                ],
+              ),
             ],
           ),
         ),
@@ -479,7 +537,7 @@ class _SegmentTabs extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: const Color(0xFFF1F2F6),
+        color: const Color.fromARGB(255, 218, 223, 246),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
@@ -560,8 +618,16 @@ class _SocialButton extends StatelessWidget {
       child: Container(
         height: 56,
         decoration: BoxDecoration(
-          border: Border.all(color: const Color(0xFFD8DDE8)),
+          color: Colors.white,
+          border: Border.all(color: const Color(0xFF8FA6C2), width: 1.5),
           borderRadius: BorderRadius.circular(10),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x1F17324D),
+              blurRadius: 5,
+              offset: Offset(0, 2),
+            ),
+          ],
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -736,11 +802,11 @@ class _AppTextField extends StatelessWidget {
             const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Color(0xFFDDE2EC)),
+          borderSide: const BorderSide(color: Color(0xFF8FA6C2), width: 1.5),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Color(0xFF31A8E8), width: 1.5),
+          borderSide: const BorderSide(color: Color(0xFF087FEA), width: 2.2),
         ),
       ),
     );

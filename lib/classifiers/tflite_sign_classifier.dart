@@ -132,35 +132,53 @@ class TfliteSignClassifier {
   // ── Static classification ─────────────────────────────────────────────────
 
   Future<SignResult?> classifyAlphabet(List<HandLandmark> landmarks) =>
-      _classify(landmarks, _alphabetLabelPattern.hasMatch, 'alphabet');
+      _classify(
+        [landmarks],
+        (label) => _alphabetLabelPattern.hasMatch(label) && label != 'Z',
+        'alphabet',
+      );
 
-  Future<SignResult?> classifyNumber(List<HandLandmark> landmarks) =>
-      _classify(landmarks, (l) => int.tryParse(l) != null, 'number');
+  /// Classify number signs from the static landmark model.
+  Future<SignResult?> classifyNumber(List<HandLandmark> landmarks) => _classify(
+        [landmarks],
+        (label) {
+          final value = int.tryParse(label);
+          return value != null && value >= 0 && value <= 20;
+        },
+        'number',
+        confidenceThreshold: 0.72,
+        confidenceThresholdForLabel: (label) => label == '2' ? 0.55 : 0.72,
+      );
 
   Future<SignResult?> classifyWordsFromHands(
     List<List<HandLandmark>>? hands,
   ) async {
     if (hands == null || hands.isEmpty) return null;
     return _classify(
-      hands.first,
+      hands,
       (l) => !_alphabetLabelPattern.hasMatch(l) && int.tryParse(l) == null,
       'word',
+      confidenceMargin: 0.12,
     );
   }
 
   Future<SignResult?> _classify(
-    List<HandLandmark> landmarks,
+    List<List<HandLandmark>> hands,
     bool Function(String) acceptsLabel,
-    String type,
-  ) async {
+    String type, {
+    double? confidenceThreshold,
+    double Function(String label)? confidenceThresholdForLabel,
+    double? confidenceMargin,
+  }) async {
     final isolateInterpreter = _isolateInterpreter;
     if (isolateInterpreter == null ||
         _labels.isEmpty ||
-        landmarks.length < 21) {
+        hands.isEmpty ||
+        hands.first.length < 21) {
       return null;
     }
 
-    final input = [_normalizeLandmarks(landmarks)];
+    final input = [_normalizeHands(hands)];
     final outputCount = _outputCount == 0 ? _labels.length : _outputCount;
     final output = [List<double>.filled(outputCount, 0)];
 
@@ -173,16 +191,28 @@ class TfliteSignClassifier {
 
     var bestIndex = -1;
     var bestConf = 0.0;
+    var secondConf = 0.0;
     final limit = min(min(output[0].length, _labels.length), outputCount);
     for (var i = 0; i < limit; i++) {
       if (!acceptsLabel(_labels[i])) continue;
-      if (output[0][i] > bestConf) {
-        bestConf = output[0][i];
+      final confidence = output[0][i];
+      if (confidence > bestConf) {
+        secondConf = bestConf;
+        bestConf = confidence;
         bestIndex = i;
+      } else if (confidence > secondConf) {
+        secondConf = confidence;
       }
     }
 
-    if (bestIndex == -1 || bestConf < minimumConfidence) return null;
+    if (bestIndex == -1 ||
+        bestConf <
+            (confidenceThresholdForLabel?.call(_labels[bestIndex]) ??
+                confidenceThreshold ??
+                minimumConfidence) ||
+        (confidenceMargin != null && bestConf - secondConf < confidenceMargin)) {
+      return null;
+    }
     return SignResult(
       label: _labels[bestIndex],
       confidence: bestConf,
@@ -293,7 +323,31 @@ class TfliteSignClassifier {
       values.add((lm.y - wrist.y) / scale);
       values.add((lm.z - wrist.z) / scale);
     }
+    // Preserve signing-space height/position for words such as father and
+    // mother, whose hand shapes can be nearly identical.
+    values
+      ..add(wrist.x)
+      ..add(wrist.y);
     return values;
+  }
+
+  List<double> _normalizeHands(List<List<HandLandmark>> hands) {
+    // Match the training CSV, which stores hands from left to right. This
+    // keeps the two-hand feature slots stable even if detector ranking flips.
+    final ordered = hands
+        .where((hand) => hand.length >= _kLandmarks)
+        .take(2)
+        .toList()
+      ..sort((a, b) => a.first.x.compareTo(b.first.x));
+    final features = <double>[];
+    for (var index = 0; index < 2; index++) {
+      if (index < ordered.length) {
+        features.addAll(_normalizeLandmarks(ordered[index]));
+      } else {
+        features.addAll(List<double>.filled(_kLandmarks * 3 + 2, 0));
+      }
+    }
+    return features;
   }
 
   List<double> _sequenceLandmarkFeatures(List<HandLandmark> landmarks) {

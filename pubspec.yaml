@@ -51,6 +51,7 @@ dependencies:
   image_picker: ^1.1.2
   flutter_shaders: ^0.1.3
   panorama_viewer: ^2.0.7
+  google_mlkit_face_detection: ^0.15.1
 
 dev_dependencies:
   flutter_test:
@@ -63,8 +64,22 @@ flutter:
     - shaders/chroma_key.frag
   assets:
     - assets/360/    
+    - assets/data/panorama_hotspots.json
+    - assets/180_videos/
     - web/icons/Icon-192.png
     - assets/images/app_logo.png
+    - assets/images/star.png
+    - assets/images/bg.png
+    - assets/images/gb.png
+    - assets/images/pro.png
+    - assets/images/num.png
+    - assets/images/bas.png
+    - assets/images/gam.png
+    - assets/images/180.png
+    - assets/images/set.png
+    - assets/images/she.png
+    - assets/images/ALPHA.png
+    - assets/images/alp.png
     - assets/images/home_design.png
     - assets/images/guess_asl_icon.png
     - assets/images/guess_me_icon.png

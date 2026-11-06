@@ -52,10 +52,8 @@ class _TutorialVideoScreenState extends State<TutorialVideoScreen> {
   Offset _offset = Offset.zero;
   Offset _previousOffset = Offset.zero;
   bool _isFullscreen = false;
-  bool _controlsVisible = false;
   bool _loadingVideo = true;
   bool _frontSlowQueued = false;
-  Timer? _controlsTimer;
   late final DateTime _sessionStartedAt;
   _TutorialView _activeView = _TutorialView.front;
 
@@ -197,21 +195,12 @@ class _TutorialVideoScreenState extends State<TutorialVideoScreen> {
       _frontSlowQueued = false;
     });
     _controller?.setPlaybackSpeed(speed);
-    _showControlsTemporarily();
   }
 
   void _resetZoom() {
     setState(() {
       _scale = 1.0;
       _offset = Offset.zero;
-    });
-  }
-
-  void _showControlsTemporarily() {
-    _controlsTimer?.cancel();
-    setState(() => _controlsVisible = true);
-    _controlsTimer = Timer(const Duration(seconds: 4), () {
-      if (mounted) setState(() => _controlsVisible = false);
     });
   }
 
@@ -252,7 +241,6 @@ class _TutorialVideoScreenState extends State<TutorialVideoScreen> {
   @override
   void dispose() {
     unawaited(_recordSessionTime());
-    _controlsTimer?.cancel();
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
       DeviceOrientation.portraitDown,
@@ -277,71 +265,60 @@ class _TutorialVideoScreenState extends State<TutorialVideoScreen> {
     }
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: const Color(0xFF05030A),
       body: BackgroundMusicRegion(
         track: null,
         showToggle: false,
-        child: AppBackground(
-          dimmed: true,
+        child: DecoratedBox(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF127BD1), Color(0xFF07070D)],
+              stops: [0.0, 1.0],
+            ),
+          ),
           child: Stack(
             children: [
               SafeArea(
                 child: LayoutBuilder(
                   builder: (context, constraints) {
                     final compact = constraints.maxHeight < 720;
-                    final videoWidth =
-                        (constraints.maxWidth - 16)
-                            .clamp(280.0, 760.0)
-                            .toDouble();
+                    final videoWidth = (constraints.maxWidth - 24).clamp(280.0, 760.0).toDouble();
                     return SingleChildScrollView(
-                      padding: EdgeInsets.fromLTRB(
-                        8,
-                        compact ? 24 : 34,
-                        8,
-                        18,
-                      ),
+                      padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
                       child: ConstrainedBox(
-                        constraints: BoxConstraints(
-                          minHeight: constraints.maxHeight -
-                              MediaQuery.paddingOf(context).vertical -
-                              80,
-                        ),
+                        constraints: BoxConstraints(minHeight: constraints.maxHeight - 20),
                         child: Column(
-                          mainAxisAlignment: MainAxisAlignment.start,
                           children: [
-                            if (_hasSignImage) ...[
-                              _buildSignImage(compact: compact),
-                              SizedBox(height: compact ? 8 : 12),
-                            ],
-                            Text(
-                              widget.title,
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: compact ? 30 : 36,
-                                fontWeight: FontWeight.w900,
-                                shadows: const [
-                                  Shadow(
-                                    color: Color(0x99000000),
-                                    blurRadius: 8,
-                                    offset: Offset(0, 3),
-                                  ),
+                            SizedBox(
+                              height: compact ? 174 : 205,
+                              child: Stack(
+                                alignment: Alignment.center,
+                                children: [
+                                  Positioned(left: 0, top: 78, child: _TutorialZoomButton(icon: Icons.add, onTap: () => _adjustZoom(0.25))),
+                                  Positioned(left: 0, top: 130, child: _TutorialZoomButton(icon: Icons.remove, onTap: () => _adjustZoom(-0.25))),
+                                  if (_hasSignImage) Positioned(top: 18, child: _buildSignImage(compact: compact)),
+                                  Positioned(bottom: 4, child: Text(widget.title, textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontSize: compact ? 28 : 34, fontWeight: FontWeight.w900, shadows: const [Shadow(color: Colors.black87, blurRadius: 8, offset: Offset(0, 3))]))),
                                 ],
                               ),
                             ),
-                            SizedBox(height: compact ? 14 : 18),
-                            Center(
-                              child: SizedBox(
-                                width: videoWidth,
+                            SizedBox(
+                              width: videoWidth,
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(16),
                                 child: AspectRatio(
-                                  aspectRatio:
-                                      _controller?.value.aspectRatio ?? 16 / 9,
+                                  aspectRatio: _controller?.value.aspectRatio ?? 16 / 9,
                                   child: _buildVideoPanel(),
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 34),
-                            _buildViewButtons(),
+                            if (_controller != null) ...[
+                              const SizedBox(height: 10),
+                              SizedBox(width: videoWidth, child: _buildTutorialControls(_controller!)),
+                            ],
+                            SizedBox(height: compact ? 20 : 28),
+                            SizedBox(width: videoWidth, child: _buildViewButtons()),
                           ],
                         ),
                       ),
@@ -350,19 +327,19 @@ class _TutorialVideoScreenState extends State<TutorialVideoScreen> {
                 ),
               ),
               Positioned(
-                top: 18,
-                left: 18,
-                child: SafeArea(
-                  child: _HighlightedBackButton(
-                    onTap: () => Navigator.of(context).pop(),
-                  ),
-                ),
+                top: 8,
+                left: 8,
+                child: SafeArea(child: _HighlightedBackButton(onTap: () => Navigator.of(context).pop())),
               ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  void _adjustZoom(double delta) {
+    setState(() => _scale = (_scale + delta).clamp(1.0, 4.0).toDouble());
   }
 
   bool get _hasSignImage =>
@@ -441,7 +418,6 @@ class _TutorialVideoScreenState extends State<TutorialVideoScreen> {
     final controller = _controller;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: _showControlsTemporarily,
       onDoubleTap: _resetZoom,
       onScaleStart: (details) {
         _previousScale = _scale;
@@ -470,7 +446,7 @@ class _TutorialVideoScreenState extends State<TutorialVideoScreen> {
                   child: _buildVideoBody(controller),
                 ),
               ),
-              if (controller != null && (_controlsVisible || fullscreen))
+              if (controller != null && fullscreen)
                 Positioned(
                   left: 0,
                   right: 0,
@@ -480,6 +456,91 @@ class _TutorialVideoScreenState extends State<TutorialVideoScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildTutorialControls(VideoPlayerController controller) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF082D58),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFFFA21A), width: 2),
+        boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 12, offset: Offset(0, 5))],
+      ),
+      child: Column(
+        children: [
+          VideoProgressIndicator(
+            controller,
+            allowScrubbing: true,
+            padding: EdgeInsets.zero,
+            colors: const VideoProgressColors(playedColor: Color(0xFFFFA21A), bufferedColor: Colors.white54, backgroundColor: Colors.white24),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Color.fromARGB(255, 1, 152, 178),
+                        Color(0xFF168BD7),
+                        Color(0xFF0753A6),
+                      ],
+                    ),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x55000000),
+                        blurRadius: 6,
+                        offset: Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      shadowColor: Colors.transparent,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size(0, 48),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: const BorderSide(color: Colors.white, width: 1.5),
+                      ),
+                    ),
+                    onPressed: () => controller..seekTo(Duration.zero)..play(),
+                    icon: const Icon(Icons.replay_rounded),
+                    label: const Text('Replay', style: TextStyle(fontWeight: FontWeight.w800)),
+                  ),
+                ),
+              ),
+              IconButton(color: Colors.white, tooltip: _isFullscreen ? 'Exit fullscreen' : 'Fullscreen', onPressed: _toggleFullscreen, icon: Icon(_isFullscreen ? Icons.fullscreen_exit : Icons.fullscreen)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: _speeds.map((speed) => Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2),
+                child: OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(0, 42),
+                    padding: EdgeInsets.zero,
+                    foregroundColor: _playbackSpeed == speed ? Colors.black : Colors.white,
+                    backgroundColor: _playbackSpeed == speed ? const Color(0xFFFFA21A) : Colors.transparent,
+                    side: const BorderSide(color: Color(0xFFB9D7F3)),
+                  ),
+                  onPressed: () => _setSpeed(speed),
+                  child: FittedBox(child: Text('${speed.toStringAsFixed(speed == 1 ? 1 : 2).replaceAll(RegExp(r'0+$'), '').replaceAll(RegExp(r'\.$'), '')}x', style: const TextStyle(fontWeight: FontWeight.w800))),
+                ),
+              ),
+            )).toList(),
+          ),
+        ],
       ),
     );
   }
@@ -753,15 +814,36 @@ class _VideoControls extends StatelessWidget {
             ),
             tooltip: value.isPlaying ? 'Pause' : 'Play',
           ),
-          IconButton(
-            color: Colors.white,
-            onPressed: () {
-              controller
-                ..seekTo(Duration.zero)
-                ..play();
-            },
-            icon: const Icon(Icons.replay_rounded),
-            tooltip: 'Replay',
+          Container(
+            width: 40,
+            height: 40,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0xFF54D8F0),
+                  Color(0xFF168BD7),
+                  Color(0xFF0753A6),
+                ],
+              ),
+              border: Border.fromBorderSide(
+                BorderSide(color: Colors.white, width: 1.2),
+              ),
+            ),
+            child: IconButton(
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints.expand(),
+              color: Colors.white,
+              onPressed: () {
+                controller
+                  ..seekTo(Duration.zero)
+                  ..play();
+              },
+              icon: const Icon(Icons.replay_rounded),
+              tooltip: 'Replay',
+            ),
           ),
           if (scale > 1.0)
             IconButton(
@@ -812,6 +894,37 @@ class _VideoControls extends StatelessWidget {
   }
 }
 
+class _TutorialAccent extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final double size;
+
+  const _TutorialAccent({required this.icon, required this.color, required this.size});
+
+  @override
+  Widget build(BuildContext context) => Icon(icon, color: color, size: size);
+}
+
+class _TutorialZoomButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _TutorialZoomButton({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0x99FFFFFF),
+      shape: const CircleBorder(),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: SizedBox(width: 42, height: 42, child: Icon(icon, color: const Color(0xFF394957), size: 30)),
+      ),
+    );
+  }
+}
+
 class _HighlightedBackButton extends StatelessWidget {
   final VoidCallback onTap;
 
@@ -819,24 +932,46 @@ class _HighlightedBackButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: const Color(0xFF2ED7E6),
-      elevation: 8,
-      shadowColor: const Color(0x66000000),
-      shape: const CircleBorder(
-        side: BorderSide(color: Colors.white, width: 2),
+    return Container(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF19B9C2), Color(0xFF078B9B)],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF001B36).withValues(alpha: 0.72),
+            blurRadius: 18,
+            spreadRadius: 1.5,
+            offset: const Offset(0, 5),
+          ),
+          BoxShadow(
+            color: const Color(0xFF54C8FF).withValues(alpha: 0.40),
+            blurRadius: 12,
+            spreadRadius: 1,
+            offset: const Offset(0, 1),
+          ),
+        ],
       ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: onTap,
-        child: const SizedBox(
-          width: 56,
-          height: 56,
-          child: Icon(
-            Icons.arrow_back_rounded,
-            color: Colors.white,
-            size: 34,
+      child: Material(
+        color: Colors.transparent,
+        shape: const CircleBorder(
+          side: BorderSide(color: Colors.white, width: 3),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onTap,
+          child: const SizedBox(
+            width: 50,
+            height: 50,
+            child: Icon(
+              Icons.arrow_back_rounded,
+              color: Colors.white,
+              size: 30,
+            ),
           ),
         ),
       ),

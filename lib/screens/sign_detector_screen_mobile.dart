@@ -1,10 +1,11 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
-
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:hand_landmarker/hand_landmarker.dart' as mp_hand;
 import 'package:permission_handler/permission_handler.dart';
 import 'data_collection_screen.dart';
@@ -13,6 +14,7 @@ import '../classifiers/tflite_sign_classifier.dart';
 import '../painters/landmark_painter.dart';
 import '../ui/background_music_region.dart';
 import '../services/tts_service.dart';
+import '../services/face_zone_service.dart';
 
 const List<String> kDict = [
   'hello',
@@ -134,8 +136,11 @@ class SignDetectorScreen extends StatefulWidget {
 
 class _SignDetectorScreenState extends State<SignDetectorScreen>
     with WidgetsBindingObserver {
+  static const bool _showCollectButton = true;
+
   CameraController? _cameraController;
   bool _cameraInitialized = false;
+  bool _cameraInitializing = false;
   bool _camPaused = false;
   bool _processing = false;
   bool _streaming = false;
@@ -146,7 +151,14 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
   mp_hand.HandLandmarkerPlugin? _handLandmarker;
   final SignClassifier _classifier = SignClassifier();
   final TfliteSignClassifier _tfliteClassifier = TfliteSignClassifier();
+  final FaceZoneService _faceZones = FaceZoneService();
+
+  bool get _needsFace =>
+      _mode == DetectionMode.words ||
+      (_mode == DetectionMode.motion &&
+          _motionCategory == MotionCategory.words);
   final TtsService _tts = TtsService();
+  bool _voiceMuted = false;
   static const Set<String> _ruleFirstAlphabetLabels = {
     'G',
     'H',
@@ -168,13 +180,14 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
   SignResult? _currentHit;
   int _holdFrames = 0;
   Timer? _startCountdownTimer;
+  Timer? _repeatVoiceTimer;
   bool _detectionArmed = false;
   int _startCountdown = 0;
   static const int _prepareSeconds = 5;
   final List<SignResult> _captureHits = [];
+  int _captureMisses = 0;
   String? _captureMessage;
-  // Require 8 consistent frames before confirming — prevents mid-transition false triggers
-  // At ~3 detections/sec on TECNO KM4k this means ~2.5 seconds of holding the sign
+  // Require four consistent frames before confirming a captured sign.
   static const int _holdNeed = 4;
   // Process every 2nd frame and let the minimum inference gap cap the load.
   static const int _processEveryNFrames = 2;
@@ -201,7 +214,91 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
   Size? get _displayPreviewSize {
     final previewSize = _rawPreviewSize;
     if (previewSize == null) return null;
-    return Size(previewSize.height, previewSize.width);
+    final rot = _uprightRotation;
+    return (rot == 90 || rot == 270)
+        ? Size(previewSize.height, previewSize.width)
+        : previewSize;
+  }
+
+  static const String _kOrientationKey = 'sign_detector_landscape';
+  bool _landscape = false; // default: portrait
+
+  Future<void> _loadOrientationChoice() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _landscape = prefs.getBool(_kOrientationKey) ?? false;
+    } catch (_) {}
+    _applyOrientation();
+    if (mounted) setState(() {});
+  }
+
+  void _applyOrientation() {
+    SystemChrome.setPreferredOrientations(
+      _landscape
+          ? const [
+              DeviceOrientation.landscapeLeft,
+              DeviceOrientation.landscapeRight,
+            ]
+          : const [DeviceOrientation.portraitUp],
+    );
+  }
+
+  Future<void> _toggleOrientation() async {
+    setState(() => _landscape = !_landscape);
+    _applyOrientation();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_kOrientationKey, _landscape);
+    } catch (_) {}
+  }
+
+  /// Clockwise degrees that make the raw sensor frame upright right now.
+  int get _uprightRotation {
+    final c = _cameraController;
+    if (c == null) return 270;
+    const deg = {
+      DeviceOrientation.portraitUp: 0,
+      DeviceOrientation.landscapeLeft: 90,
+      DeviceOrientation.portraitDown: 180,
+      DeviceOrientation.landscapeRight: 270,
+    };
+    final dev = deg[c.value.deviceOrientation] ?? 0;
+    final sensor = c.description.sensorOrientation;
+    return c.description.lensDirection == CameraLensDirection.front
+        ? (sensor + dev) % 360
+        : (sensor - dev + 360) % 360;
+  }
+
+  /// Makes landscape landmarks look like the portrait ones the classifiers
+  /// were built for (same hand size, re-centred). Identity in portrait.
+  List<HandLandmark> _toPortraitRaw(List<HandLandmark> lm) {
+    final rot = _uprightRotation;
+    final raw = _rawPreviewSize;
+    if (rot == 270 || raw == null) return lm;
+    final rw = raw.width, rh = raw.height;
+    final swap = rot == 90 || rot == 270;
+    final w = swap ? rh : rw;
+    final h = swap ? rw : rh;
+    final cw = math.min(rw, rh), ch = math.max(rw, rh);
+    return lm.map((p) {
+      double ux, uy;
+      switch (rot) {
+        case 90:
+          ux = 1 - p.y;
+          uy = p.x;
+          break;
+        case 180:
+          ux = 1 - p.x;
+          uy = 1 - p.y;
+          break;
+        default:
+          ux = p.x;
+          uy = p.y;
+      }
+      final cx = 0.5 + (ux * w - w / 2) / cw;
+      final cy = 0.5 + (uy * h - h / 2) / ch;
+      return HandLandmark(1 - cy, cx, p.z);
+    }).toList(growable: false);
   }
 
   bool get _usesVideoCapture => widget.captureKind == CaptureKind.video;
@@ -212,10 +309,10 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
       widget.lockMode && _mode == DetectionMode.words;
 
   String get _startCaptureLabel =>
-      _usesVideoCapture ? 'Start Video Capture' : 'Start Capture';
+      _usesVideoCapture ? 'Start Video Record' : 'Start Record';
 
   String get _stopCaptureLabel =>
-      _usesVideoCapture ? 'Stop Video Capture' : 'Stop Capture';
+      _usesVideoCapture ? 'Stop Video Recording' : 'Stop Recording';
 
   String get _activeCaptureText =>
       _usesVideoCapture ? 'Recording video...' : 'Capturing images...';
@@ -223,6 +320,11 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
   @override
   void initState() {
     super.initState();
+    SignVoiceMuteControl.instance.attach(
+      initialMuted: _voiceMuted,
+      toggle: _toggleVoice,
+    );
+    _loadOrientationChoice();
     _mode = widget.initialMode;
     WidgetsBinding.instance.addObserver(this);
     _init();
@@ -263,9 +365,20 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
   }
 
   Future<void> _initCamera() async {
-    setState(() => _loadText = 'Starting camera...');
+    if (!mounted || _cameraInitializing) return;
+    final activeController = _cameraController;
+    if (_cameraInitialized &&
+        activeController != null &&
+        activeController.value.isInitialized &&
+        !activeController.value.hasError) {
+      return;
+    }
+    _cameraInitializing = true;
+    if (mounted) setState(() => _loadText = 'Starting camera...');
+    CameraController? newController;
     try {
       final cameras = await availableCameras();
+      if (!mounted) return;
       if (cameras.isEmpty) {
         setState(() {
           _loadText = 'No cameras found.';
@@ -291,10 +404,19 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
             ? ImageFormatGroup.yuv420
             : ImageFormatGroup.bgra8888,
       );
+      newController = controller;
 
       await controller.initialize();
-      await _cameraController?.dispose();
+      if (!mounted) {
+        await controller.dispose();
+        return;
+      }
+      final previousController = _cameraController;
       _cameraController = controller;
+      newController = null;
+      if (previousController != null && previousController != controller) {
+        await previousController.dispose();
+      }
 
       setState(() {
         _cameraInitialized = true;
@@ -304,10 +426,15 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
       // Leave the preview smooth. Start the analyzer stream only while
       // a sign capture is active.
     } catch (error) {
-      setState(() {
-        _loadText = 'Camera error: $error';
-        _loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _loadText = 'Camera error: $error';
+          _loading = false;
+        });
+      }
+    } finally {
+      if (newController != null) await newController.dispose();
+      _cameraInitializing = false;
     }
   }
 
@@ -340,23 +467,30 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
       final controller = _cameraController!;
       final sensorOrientation = controller.description.sensorOrientation;
 
+      if (_needsFace) {
+        unawaited(_faceZones.maybeUpdate(image, _uprightRotation));
+      }
+
       List<List<HandLandmark>>? handsLandmarks;
       try {
         if (image.planes.length >= 3) {
           final handLandmarker = _handLandmarker;
           if (handLandmarker == null) return;
           final detectedHands = handLandmarker.detect(image, sensorOrientation);
-          final maxHands = _mode == DetectionMode.words ||
-                  (_mode == DetectionMode.motion &&
-                      _motionCategory == MotionCategory.words)
-              ? 2
-              : 1;
-          handsLandmarks = detectedHands.isNotEmpty
-              ? detectedHands
-                  .take(maxHands)
-                  .map((hand) => _mapHandLandmarks(hand.landmarks))
-                  .toList(growable: false)
-              : null;
+          final candidates = detectedHands
+              .map((hand) => _mapHandLandmarks(hand.landmarks))
+              .where((landmarks) => landmarks.length >= 21)
+              .toList();
+          if (candidates.isEmpty) {
+            handsLandmarks = null;
+          } else {
+            candidates.sort(
+              (a, b) => _handSelectionScore(a).compareTo(_handSelectionScore(b)),
+            );
+            // Keep the two most centered/nearest hands for two-hand signs.
+            // The best-ranked hand remains primary for single-hand models.
+            handsLandmarks = candidates.take(2).toList(growable: false);
+          }
           if (handsLandmarks == null) {
             _smoothedHandsLandmarks = null;
           }
@@ -420,13 +554,21 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
   }
 
   Future<SignResult?> _classifyCurrentFrame(
-    List<HandLandmark> primaryHandLandmarks,
-    List<List<HandLandmark>>? handsLandmarks,
+    List<HandLandmark> rawPrimary,
+    List<List<HandLandmark>>? rawHands,
   ) async {
+    final primaryHandLandmarks = _toPortraitRaw(rawPrimary);
+    final handsLandmarks =
+        rawHands?.map(_toPortraitRaw).toList(growable: false);
+    if (_needsFace) _faceZones.observeHand(rawPrimary);
     SignResult? hit;
     switch (_mode) {
       case DetectionMode.az:
-        final ruleHit = _classifier.classifyAlphabet(primaryHandLandmarks);
+        // Rule-based classifier assumes an UPRIGHT hand (y up = finger up).
+        // Raw MediaPipe landmarks are rotated, so correct them first.
+        // (TfliteSignClassifier does its own correction — keep it on raw.)
+        final ruleHit =
+            _classifier.classifyAlphabet(_toUpright(primaryHandLandmarks));
         final sequenceHit = await _tfliteClassifier.pushFrameAndClassify(
           primaryHandLandmarks,
         );
@@ -436,13 +578,27 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
         hit = _chooseAlphabetHit(ruleHit, tfliteHit, sequenceHit);
         break;
       case DetectionMode.num:
-        // Sequence model handles the motion numbers 10-20;
-        // fall back to the static classifiers for 0-9.
+        // Prefer the sequence model for moving signs 10-20, then let the
+        // static landmark model recognize any held number sign.
         final seqHit = await _tfliteClassifier.pushFrameAndClassify(
           primaryHandLandmarks,
         );
         final seqNumber = seqHit == null ? null : int.tryParse(seqHit.label);
-        if (seqHit != null &&
+        final staticNumberHit =
+            await _tfliteClassifier.classifyNumber(primaryHandLandmarks);
+        final ruleNumberHit =
+            _classifier.classifyNumber(primaryHandLandmarks);
+        final staticNumber = staticNumberHit == null
+            ? null
+            : int.tryParse(staticNumberHit.label);
+        if (ruleNumberHit?.label == '2' || ruleNumberHit?.label == '3') {
+          hit = ruleNumberHit;
+        } else if (staticNumberHit != null &&
+            staticNumber != null &&
+            staticNumber >= 11 &&
+            staticNumber <= 15) {
+          hit = staticNumberHit;
+        } else if (seqHit != null &&
             seqNumber != null &&
             seqNumber >= 10 &&
             seqNumber <= 20) {
@@ -453,19 +609,14 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
             isModelConfidence: true,
           );
         } else {
-          final modelHit =
-              await _tfliteClassifier.classifyNumber(primaryHandLandmarks);
-          hit = modelHit?.label == '2' &&
-                  !_classifier.looksLikeNumberTwo(primaryHandLandmarks)
-              ? null
-              : modelHit ?? _classifier.classifyNumber(primaryHandLandmarks);
+          hit = staticNumberHit ?? ruleNumberHit;
         }
         break;
       case DetectionMode.words:
-        final sequenceHit = await _tfliteClassifier.pushFrameAndClassify(
+        hit = await _classifyWordFrame(
           primaryHandLandmarks,
+          handsLandmarks ?? [primaryHandLandmarks],
         );
-        hit = _wordHitFromSequence(sequenceHit, primaryHandLandmarks);
         break;
       case DetectionMode.motion:
         hit = await _classifyMotionFrame(primaryHandLandmarks, handsLandmarks);
@@ -512,14 +663,45 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
         }
         return _classifier.classifyMotionNumber(primaryHandLandmarks);
       case MotionCategory.words:
-        final sequenceHit = await _tfliteClassifier.pushFrameAndClassify(
+        return _classifyWordFrame(
           primaryHandLandmarks,
+          handsLandmarks ?? [primaryHandLandmarks],
         );
-        return _wordHitFromSequence(sequenceHit, primaryHandLandmarks);
     }
   }
 
   bool _alphabetLabel(String label) => RegExp(r'^[A-Z]$').hasMatch(label);
+
+  Future<SignResult?> _classifyWordFrame(
+    List<HandLandmark> landmarks,
+    List<List<HandLandmark>> hands,
+  ) async {
+    // Basic-word static signs use both hands; the sequence model remains a
+    // one-hand motion fallback for signs that need movement.
+    final staticHit = await _tfliteClassifier.classifyWordsFromHands(
+      hands,
+    );
+    if (staticHit != null) {
+      final label = _needsFace
+          ? correctFaceSignLabel(
+              staticHit.label,
+              _faceZones.zoneForSign(staticHit.label),
+            )
+          : staticHit.label;
+      if (label != null) {
+        _tfliteClassifier.resetSequenceBuffer();
+        return SignResult(
+          label: label,
+          confidence: staticHit.confidence,
+          type: 'word',
+          isModelConfidence: staticHit.isModelConfidence,
+        );
+      }
+    }
+
+    final sequenceHit = await _tfliteClassifier.pushFrameAndClassify(landmarks);
+    return _wordHitFromSequence(sequenceHit, landmarks);
+  }
 
   SignResult? _wordHitFromSequence(
     SignResult? sequenceHit,
@@ -532,8 +714,15 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
     }
     final rawLabel = sequenceHit.label.toLowerCase();
     if (rawLabel == 'i love you' && !_looksLikeILoveYou(landmarks)) return null;
+    final label = _needsFace
+        ? correctFaceSignLabel(
+            sequenceHit.label,
+            _faceZones.zoneForSign(sequenceHit.label),
+          )
+        : sequenceHit.label;
+    if (label == null) return null;
     return SignResult(
-      label: sequenceHit.label,
+      label: label,
       confidence: sequenceHit.confidence,
       type: 'word',
       isModelConfidence: sequenceHit.isModelConfidence,
@@ -584,10 +773,17 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
         isModelConfidence: sequenceHit.isModelConfidence,
       );
     }
+    // Orientation-twin pairs: same hand shape, different direction.
+    // The rule-based result checks direction explicitly, so trust it.
+    const orientationTwins = <String, Set<String>>{
+      'U': {'H'},
+      'H': {'U'},
+      'K': {'P'},
+      'P': {'K', 'Q'},
+    };
     if (ruleHit != null &&
         tfliteHit != null &&
-        ((ruleHit.label == 'U' && tfliteHit.label == 'H') ||
-            (ruleHit.label == 'P' && tfliteHit.label == 'Q'))) {
+        (orientationTwins[ruleHit.label]?.contains(tfliteHit.label) ?? false)) {
       return ruleHit;
     }
     if (tfliteHit != null) return tfliteHit;
@@ -658,10 +854,38 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
     }
   }
 
+  /// Same correction TfliteSignClassifier applies internally (_cx/_cy):
+  /// x' = 1 - y, y' = 1 - x. If T/M/N break after this, change `1.0 - p.y`
+  /// to `p.y` (removes the extra mirror flip).
+  List<HandLandmark> _toUpright(List<HandLandmark> lm) => lm
+      .map((p) => HandLandmark(1.0 - p.y, 1.0 - p.x, p.z))
+      .toList(growable: false);
+
   List<HandLandmark> _mapHandLandmarks(List<mp_hand.Landmark> landmarks) {
     return landmarks
         .map((landmark) => HandLandmark(landmark.x, landmark.y, landmark.z))
         .toList(growable: false);
+  }
+
+  double _handSelectionScore(List<HandLandmark> landmarks) {
+    var left = double.infinity;
+    var right = double.negativeInfinity;
+    var top = double.infinity;
+    var bottom = double.negativeInfinity;
+    for (final point in landmarks.take(21)) {
+      if (point.x < left) left = point.x;
+      if (point.x > right) right = point.x;
+      if (point.y < top) top = point.y;
+      if (point.y > bottom) bottom = point.y;
+    }
+    final centerX = (left + right) / 2;
+    final centerY = (top + bottom) / 2;
+    final centerDistance = math.sqrt(
+      math.pow(centerX - 0.5, 2) + math.pow(centerY - 0.5, 2),
+    );
+    final boxArea = (right - left) * (bottom - top);
+    // Centering is primary; a larger hand box breaks ties toward the nearer hand.
+    return (centerDistance - math.min(boxArea, 0.5) * 0.75).toDouble();
   }
 
   List<List<HandLandmark>> _smoothHandsLandmarks(
@@ -711,57 +935,51 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
   }
 
   void _trackCaptureHit(SignResult? hit) {
-    if (hit == null) return;
-    final minimumConfidence = (hit.label == 'J' || hit.label == 'Z')
-        ? 0.70
-        : (hit.type == 'word' && hit.isModelConfidence ? 0.25 : 0.76);
-    if (hit.confidence < minimumConfidence) return;
+    if (hit == null) {
+      _captureMisses++;
+      if (_captureMisses > 2) _captureHits.clear();
+      return;
+    }
+    final minimumConfidence =
+        hit.type == 'number' && hit.label == '2' && hit.isModelConfidence
+            ? 0.55
+            : (hit.label == 'J' || hit.label == 'Z')
+                ? 0.70
+                : (hit.type == 'word' && hit.isModelConfidence ? 0.25 : 0.76);
+    if (hit.confidence < minimumConfidence) {
+      _captureMisses++;
+      if (_captureMisses > 2) _captureHits.clear();
+      return;
+    }
+    _captureMisses = 0;
+    if (_captureHits.isNotEmpty && _captureHits.last.label != hit.label) {
+      // Keep the newest sign candidate; older labels must not win the capture.
+      _captureHits.clear();
+    }
     _captureHits.add(hit);
-    if (_captureHits.length > 36) {
+    if (_captureHits.length > 12) {
       _captureHits.removeAt(0);
     }
   }
 
   SignResult? _bestCapturedHit() {
     if (_captureHits.isEmpty) return null;
-
-    final grouped = <String, List<SignResult>>{};
-    for (final hit in _captureHits) {
-      grouped.putIfAbsent(hit.label, () => []).add(hit);
-    }
-
-    SignResult? best;
-    double bestScore = 0;
-    for (final entry in grouped.entries) {
-      final hits = entry.value;
-      final topHit = hits.reduce(
-        (a, b) => a.confidence >= b.confidence ? a : b,
-      );
-      final isModelWord = topHit.type == 'word' && topHit.isModelConfidence;
-      // A word must be seen in several frames; one lucky frame is not enough.
-      if (isModelWord && hits.length < 3) continue;
-      final meanConfidence =
-          hits.map((h) => h.confidence).reduce((a, b) => a + b) / hits.length;
-      // Votes weighted by confidence, so the label seen most often wins.
-      final score = isModelWord
-          ? hits.length * meanConfidence
-          : topHit.confidence +
-              (hits.length / 6).clamp(0.0, 0.18) +
-              (topHit.isModelConfidence ? 0.04 : 0.0);
-      if (score > bestScore) {
-        bestScore = score;
-        best = topHit;
-      }
-    }
-    if (best != null) return best;
-    final onlyModelWords = _captureHits.every(
-      (h) => h.type == 'word' && h.isModelConfidence,
+    final latest = _captureHits.last;
+    if (_captureHits.length < _holdNeed) return null;
+    final meanConfidence = _captureHits
+            .map((hit) => hit.confidence)
+            .reduce((a, b) => a + b) /
+        _captureHits.length;
+    return SignResult(
+      label: latest.label,
+      confidence: meanConfidence,
+      type: latest.type,
+      isModelConfidence: latest.isModelConfidence,
     );
-    if (onlyModelWords) return null; // better "try again" than a wrong word
-    return _captureHits.reduce((a, b) => a.confidence >= b.confidence ? a : b);
   }
 
   void _startSigningCountdown() {
+    _stopRepeatedVoice();
     _startCountdownTimer?.cancel();
     unawaited(_stopImageStream());
     setState(() {
@@ -772,6 +990,7 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
       _handsLandmarks = null;
       _smoothedHandsLandmarks = null;
       _captureHits.clear();
+      _captureMisses = 0;
       _captureMessage = null;
       _resetHoldState();
       _classifier.reset();
@@ -810,8 +1029,9 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
       _handsLandmarks = null;
       _smoothedHandsLandmarks = null;
       _captureMessage =
-          best == null ? 'No clear sign detected. Try capturing again.' : null;
+          best == null ? 'No clear sign detected. Try recording again.' : null;
       _captureHits.clear();
+      _captureMisses = 0;
       _resetHoldState();
       _classifier.reset();
       _tfliteClassifier.resetSequenceBuffer();
@@ -842,7 +1062,35 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
         _commitWord(label);
       }
     });
-    _tts.speak(label);
+    _startRepeatedVoice(label);
+  }
+
+  void _startRepeatedVoice(String label) {
+    _stopRepeatedVoice();
+    if (_voiceMuted) return;
+    unawaited(_tts.speak(label));
+    _repeatVoiceTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (mounted && !_voiceMuted && !_detectionArmed && _startCountdown == 0) {
+        unawaited(_tts.speak(label));
+      }
+    });
+  }
+
+  void _toggleVoice() {
+    setState(() => _voiceMuted = !_voiceMuted);
+    _tts.enabled = !_voiceMuted;
+    SignVoiceMuteControl.instance.setMuted(_voiceMuted);
+    if (_voiceMuted) {
+      _stopRepeatedVoice();
+    } else if (_currentHit != null) {
+      _startRepeatedVoice(_currentHit!.label);
+    }
+  }
+
+  void _stopRepeatedVoice() {
+    _repeatVoiceTimer?.cancel();
+    _repeatVoiceTimer = null;
+    unawaited(_tts.stop());
   }
 
   void _commitWord(String word) {
@@ -886,6 +1134,7 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
       _mode = mode;
       _curWord = '';
       _captureHits.clear();
+      _captureMisses = 0;
       _captureMessage = null;
       _detectionArmed = false;
       _startCountdown = 0;
@@ -906,6 +1155,7 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
       _motionCategory = category;
       _curWord = '';
       _captureHits.clear();
+      _captureMisses = 0;
       _captureMessage = null;
       _detectionArmed = false;
       _startCountdown = 0;
@@ -947,6 +1197,7 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
       _smoothedHandsLandmarks = null;
       _captureMessage = null;
       _captureHits.clear();
+      _captureMisses = 0;
       _detectionArmed = false;
       _startCountdown = 0;
       _startCountdownTimer?.cancel();
@@ -956,31 +1207,52 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    final controller = _cameraController;
-    if (controller == null) return;
-
     if (state == AppLifecycleState.inactive) {
+      // Android can briefly mark the app inactive for heads-up notifications
+      // (for example Messenger). Keep the camera controller alive so the
+      // preview does not go black when the app regains focus.
       _camPaused = true;
-      _streaming = false;
       _detectionArmed = false;
       _startCountdown = 0;
       _startCountdownTimer?.cancel();
-      controller.dispose();
+      unawaited(_stopImageStream());
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      _camPaused = true;
+      _detectionArmed = false;
+      _startCountdown = 0;
+      _startCountdownTimer?.cancel();
+      final controller = _cameraController;
       _cameraController = null;
       _cameraInitialized = false;
-    } else if (state == AppLifecycleState.resumed && _isAndroid) {
+      if (controller != null) {
+        unawaited(_stopImageStream().whenComplete(() => controller.dispose()));
+      }
+    } else if (state == AppLifecycleState.resumed) {
       _camPaused = false;
-      _initCamera();
+      final controller = _cameraController;
+      if (controller == null ||
+          !controller.value.isInitialized ||
+          controller.value.hasError) {
+        _cameraInitialized = false;
+        unawaited(_initCamera());
+      } else if (mounted) {
+        setState(() {});
+      }
     }
   }
 
   @override
   void dispose() {
+    SystemChrome.setPreferredOrientations(const [DeviceOrientation.portraitUp]);
     WidgetsBinding.instance.removeObserver(this);
     _startCountdownTimer?.cancel();
+    _stopRepeatedVoice();
     _stopImageStream();
     _cameraController?.dispose();
+    SignVoiceMuteControl.instance.detach();
     _handLandmarker?.dispose();
+    _faceZones.dispose();
     _tfliteClassifier.close();
     _tts.dispose();
     super.dispose();
@@ -1025,12 +1297,20 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
                 right: 18,
                 child: _buildResultText(),
               ),
-            if (!_isLockedImagePractice)
+            if (!_isLockedImagePractice &&
+                !(_isLockedWordPractice && _detectionArmed))
               Positioned(
                 bottom: 0,
                 left: 0,
                 right: 0,
                 child: _buildBottomPanel(),
+              ),
+            if (_isLockedWordPractice && _detectionArmed)
+              Positioned(
+                bottom: MediaQuery.of(context).padding.bottom + 22,
+                left: 0,
+                right: 0,
+                child: Center(child: _buildCenteredStopCapture()),
               ),
             if (_isLockedImagePractice && _detectionArmed)
               Positioned(
@@ -1049,6 +1329,16 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
                 right: 0,
                 top: MediaQuery.of(context).size.height * 0.56,
                 child: Center(child: _buildCenteredStartCapture()),
+              ),
+            if (_detectionArmed &&
+                (_handLandmarks == null ||
+                    (_needsFace && !_faceZones.faceFresh) ||
+                    _captureHits.length < _holdNeed))
+              Positioned(
+                top: MediaQuery.of(context).padding.top + 104,
+                left: 24,
+                right: 24,
+                child: _buildCaptureGuidance(),
               ),
             if (!_loading &&
                 !_detectionArmed &&
@@ -1091,7 +1381,7 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
               ],
             ),
           ),
-          if (_isLockedImagePractice) ...[
+          ...[
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
@@ -1109,8 +1399,45 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
                 ),
               ),
             ),
+            const SizedBox(height: 6),
+            Text(
+              hit.confidence < 0.85
+                  ? 'Possible causes: dim light, a tilted or partly hidden hand, or movement. Try brighter light and show all fingers clearly.'
+                  : 'Strong match to a trained sign. Keep the same hand angle and hold it steady for a consistent result.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                shadows: [
+                  Shadow(color: Colors.black, blurRadius: 8, offset: Offset(0, 2)),
+                ],
+              ),
+            ),
           ],
         ],
+      ),
+    );
+  }
+
+  Widget _buildCaptureGuidance() {
+    final message = _handLandmarks == null
+        ? 'No hand detected. Put one hand fully inside the frame.'
+        : _needsFace && !_faceZones.faceFresh
+            ? 'Face not detected. Keep your face and signing hand visible; adjust the camera or lighting.'
+            : 'No clear sign yet. Improve the lighting, face your palm toward the camera, and keep every finger visible and steady.';
+    return IgnorePointer(
+      child: Text(
+        message,
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 16,
+          fontWeight: FontWeight.w800,
+          shadows: [
+            Shadow(color: Colors.black, blurRadius: 8, offset: Offset(0, 2)),
+          ],
+        ),
       ),
     );
   }
@@ -1140,7 +1467,7 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
             Icon(Icons.stop_rounded, color: Colors.white, size: 20),
             SizedBox(width: 6),
             Text(
-              'Stop Capture',
+              'Stop Recording',
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 16,
@@ -1178,7 +1505,7 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
             Icon(Icons.play_arrow_rounded, color: Colors.black, size: 21),
             SizedBox(width: 6),
             Text(
-              'Start Capture',
+              'Start Recording',
               style: TextStyle(
                 color: Colors.black,
                 fontSize: 16,
@@ -1220,9 +1547,20 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
                       lensDirection: controller.description.lensDirection,
                       sensorOrientation:
                           controller.description.sensorOrientation,
+                      rotationDegrees: _uprightRotation,
                     ),
                   ),
                 ),
+                if (_needsFace)
+                  IgnorePointer(
+                    child: CustomPaint(
+                      painter: FaceDebugPainter(
+                        service: _faceZones,
+                        mirror: controller.description.lensDirection ==
+                            CameraLensDirection.front,
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -1295,13 +1633,21 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
           ),
           const SizedBox(width: 8),
           _TopBtn(
-            label: 'Collect',
+            label: _landscape ? 'Portrait' : 'Landscape',
             active: false,
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const DataCollectionScreen()),
-            ),
+            onTap: _toggleOrientation,
           ),
+          const SizedBox(width: 6),
+          if (_showCollectButton) ...[
+            _TopBtn(
+              label: 'Collect',
+              active: false,
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const DataCollectionScreen()),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -1340,7 +1686,7 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
       holdBar = _holdFrames / _holdNeed;
     }
 
-    final badgeWidth = MediaQuery.sizeOf(context).width * 0.25;
+    final badgeWidth = MediaQuery.sizeOf(context).width * 0.48;
 
     return Container(
       width: badgeWidth,
@@ -1364,11 +1710,12 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
         children: [
           Text(
             label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+            maxLines: 2,
+            softWrap: true,
+            overflow: TextOverflow.visible,
             style: TextStyle(
               color: color,
-              fontSize: 24,
+              fontSize: 22,
               fontWeight: FontWeight.w900,
               height: 1,
             ),
@@ -1495,84 +1842,76 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
                     onTap: () => _setMode(DetectionMode.az),
                   ),
                 ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: _ModeBtn(
-                    label: 'Num',
-                    active: _mode == DetectionMode.num,
-                    onTap: () => _setMode(DetectionMode.num),
-                  ),
-                ),
               ],
             ),
             const SizedBox(height: 8),
           ],
-          ConstrainedBox(
-            constraints: BoxConstraints(
-              minHeight: MediaQuery.sizeOf(context).height * 0.25,
-            ),
-            child: Container(
-              width: double.infinity,
-              constraints: const BoxConstraints(minHeight: 96),
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
-              decoration: BoxDecoration(
-                color: const Color(0x0DFFFFFF),
-                border: Border.all(color: const Color(0x4D00E5CC), width: 0.5),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      sentence.isEmpty
-                          ? (_detectionArmed
-                              ? '$_activeCaptureText press $_stopCaptureLabel when done'
-                              : (_captureMessage ??
-                                  'Press $_startCaptureLabel, then get ready...'))
-                          : visibleSentence,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: sentence.isEmpty
-                            ? const Color(0x33FFFFFF)
-                            : Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
-                        height: 1.4,
-                      ),
-                    ),
-                  ),
-                  if (spellingMode && _curWord.isNotEmpty) ...[
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0x2600E5CC),
-                        border: Border.all(
-                          color: const Color(0x8000E5CC),
-                          width: 1,
-                        ),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
+          if (!_isLockedWordPractice)
+            SizedBox(
+              height: MediaQuery.sizeOf(context).height / 8,
+              child: Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.transparent,
+                  border:
+                      Border.all(color: const Color(0x4D00E5CC), width: 0.5),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
                       child: Text(
-                        _curWord,
-                        style: const TextStyle(
-                          color: kTeal,
-                          fontSize: 21,
+                        sentence.isEmpty
+                            ? (_detectionArmed
+                                ? '$_activeCaptureText press $_stopCaptureLabel when done'
+                                : (_captureMessage ??
+                                    'Press $_startCaptureLabel, then get ready...'))
+                            : visibleSentence,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: sentence.isEmpty
+                              ? const Color(0x33FFFFFF)
+                              : Colors.white,
+                          fontSize: 18,
                           fontWeight: FontWeight.w700,
+                          height: 1.4,
                         ),
                       ),
                     ),
+                    if (spellingMode && _curWord.isNotEmpty) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0x2600E5CC),
+                          border: Border.all(
+                            color: const Color(0x8000E5CC),
+                            width: 1,
+                          ),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          _curWord,
+                          style: const TextStyle(
+                            color: kTeal,
+                            fontSize: 21,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 7),
-          if (suggestions.isNotEmpty) ...[
+          if (!_isLockedWordPractice) const SizedBox(height: 7),
+          if (!_isLockedWordPractice && suggestions.isNotEmpty) ...[
             SizedBox(
               height: 46,
               child: ListView(
@@ -1684,7 +2023,7 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
                     Text(
                       isCountingDown
                           ? 'Position your hand in the frame'
-                          : 'Press capture before signing',
+                          : 'Press Record before signing',
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         color: Colors.white,
@@ -1695,7 +2034,7 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
                     const SizedBox(height: 8),
                     Text(
                       isCountingDown
-                          ? 'Capture starts after the countdown.'
+                          ? 'Recording starts after the countdown.'
                           : 'The app will wait $_prepareSeconds seconds so you can position properly.',
                       textAlign: TextAlign.center,
                       style: const TextStyle(
@@ -1725,7 +2064,7 @@ class _SignDetectorScreenState extends State<SignDetectorScreen>
                               ],
                             ),
                             child: const Text(
-                              'Capture',
+                              'Record',
                               style: TextStyle(
                                 color: Colors.black,
                                 fontSize: 16,

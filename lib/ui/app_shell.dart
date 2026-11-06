@@ -15,6 +15,7 @@ import '../screens/settings_screen.dart';
 import '../screens/sign_detector_screen.dart';
 import '../screens/landing_screen.dart';
 import '../services/activity_time_service.dart';
+import '../services/api_config.dart';
 import '../services/auth_service.dart';
 
 const Color kAccent = Color(0xFF39D8E8);
@@ -27,12 +28,16 @@ class AppBackground extends StatelessWidget {
   final Widget child;
   final bool dimmed;
   final String? imageAsset;
+  final double backgroundDimOpacity;
+  final bool useClassroomBackground;
 
   const AppBackground({
     super.key,
     required this.child,
     this.dimmed = false,
     this.imageAsset,
+    this.backgroundDimOpacity = 0,
+    this.useClassroomBackground = false,
   });
 
   @override
@@ -49,21 +54,117 @@ class AppBackground extends StatelessWidget {
         fit: StackFit.expand,
         children: [
           if (imageAsset == null)
-            const _SkyBackdrop()
+            useClassroomBackground
+                ? Image.asset('assets/images/bg.png', fit: BoxFit.cover)
+                : const _SkyBackdrop()
           else
             Image.asset(
               imageAsset!,
               fit: BoxFit.cover,
             ),
-          if (dimmed)
+          if (useClassroomBackground && imageAsset == null)
+            const IgnorePointer(child: _ClassroomBubbles()),
+          if (dimmed || backgroundDimOpacity > 0)
             Container(
-              color: Colors.black.withValues(alpha: 0.32),
+              color: Colors.black.withValues(
+                alpha: dimmed ? 0.32 : backgroundDimOpacity,
+              ),
             ),
           child,
         ],
       ),
     );
   }
+}
+
+/// Classroom backdrop shared by the learning and profile pages.
+/// The board and page banner scale with the viewport so the content can sit
+/// over the board on narrow phones as well as tablets.
+class ClassroomPageBackground extends StatelessWidget {
+  final Widget child;
+  final String bannerAsset;
+  final double boardTopFraction;
+  final double landscapeBoardTopFraction;
+  final bool showBoard;
+  final List<Color>? backgroundGradient;
+  final double backgroundDimOpacity;
+
+  const ClassroomPageBackground({
+    super.key,
+    required this.child,
+    required this.bannerAsset,
+    this.boardTopFraction = 0.43,
+    this.landscapeBoardTopFraction = 0.56,
+    this.showBoard = true,
+    this.backgroundGradient,
+    this.backgroundDimOpacity = 0,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (context, constraints) {
+      final landscape = constraints.maxWidth > constraints.maxHeight;
+      final boardFraction =
+          landscape ? landscapeBoardTopFraction : boardTopFraction;
+      final boardTop = constraints.maxHeight * boardFraction;
+      final boardHeight = constraints.maxHeight - boardTop;
+      const bannerTop = 0.0;
+      final bannerHeight = constraints.maxHeight *
+          (landscape ? 0.16 : 0.10);
+      final bannerInset = constraints.maxWidth * 0.10;
+      return Stack(fit: StackFit.expand, children: [
+        if (backgroundGradient == null)
+          Image.asset('assets/images/bg.png', fit: BoxFit.cover)
+        else
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: backgroundGradient!,
+              ),
+            ),
+          ),
+        if (backgroundGradient == null)
+          const IgnorePointer(child: _ClassroomBubbles()),
+        if (showBoard)
+          Positioned(
+          left: constraints.maxWidth * 0.025,
+          right: constraints.maxWidth * 0.025,
+          top: boardTop,
+          height: boardHeight,
+          child: Image.asset('assets/images/gb.png', fit: BoxFit.fill),
+        ),
+        Positioned(
+          left: bannerInset,
+          right: bannerInset,
+          top: bannerTop,
+          height: bannerHeight,
+          child: Image.asset(bannerAsset, fit: BoxFit.contain),
+        ),
+        if (backgroundDimOpacity > 0)
+          ColoredBox(
+            color: Colors.black.withValues(alpha: backgroundDimOpacity),
+          ),
+        child,
+      ]);
+    });
+  }
+}
+
+/// Small classroom bookshelf accent for the avatar row, kept above the board.
+class ClassroomBookshelf extends StatelessWidget {
+  final double width;
+
+  const ClassroomBookshelf({super.key, this.width = 42});
+
+  @override
+  Widget build(BuildContext context) => Image.asset(
+        'assets/images/she.png',
+        width: width,
+        fit: BoxFit.contain,
+        alignment: Alignment.bottomCenter,
+      );
 }
 
 class AppLogo extends StatelessWidget {
@@ -159,6 +260,7 @@ class AppTopBar extends StatelessWidget {
   final VoidCallback? onBack;
   final VoidCallback? onMenu;
   final bool showLogo;
+  final bool menuOnLeft;
 
   const AppTopBar({
     super.key,
@@ -166,6 +268,7 @@ class AppTopBar extends StatelessWidget {
     this.onBack,
     this.onMenu,
     this.showLogo = true,
+    this.menuOnLeft = false,
   });
 
   @override
@@ -182,7 +285,12 @@ class AppTopBar extends StatelessWidget {
         ),
         child: Row(
           children: [
-            if (onBack != null)
+            if (menuOnLeft && onMenu != null)
+              Transform.translate(
+                offset: const Offset(0, 15),
+                child: AppMenuIconButton(onTap: onMenu!, size: logoSize),
+              )
+            else if (onBack != null)
               AppBackIconButton(
                 onTap: onBack!,
                 size: logoSize,
@@ -206,10 +314,13 @@ class AppTopBar extends StatelessWidget {
               ),
             ] else
               const Spacer(),
-            if (onMenu != null)
-              AppMenuIconButton(
-                onTap: onMenu!,
-                size: logoSize,
+            if (!menuOnLeft && onMenu != null)
+              Transform.translate(
+                offset: const Offset(0, 15),
+                child: AppMenuIconButton(
+                  onTap: onMenu!,
+                  size: logoSize,
+                ),
               )
             else
               SizedBox(width: sideSlot),
@@ -218,6 +329,88 @@ class AppTopBar extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ClassroomBubbles extends StatefulWidget {
+  const _ClassroomBubbles();
+
+  @override
+  State<_ClassroomBubbles> createState() => _ClassroomBubblesState();
+}
+
+class _ClassroomBubblesState extends State<_ClassroomBubbles>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _animation = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 18),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _animation.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+        animation: _animation,
+        builder: (context, child) => CustomPaint(
+          painter: _ClassroomBubblePainter(_animation.value),
+          child: child,
+        ),
+        child: const SizedBox.expand(),
+      );
+}
+
+class _ClassroomBubblePainter extends CustomPainter {
+  final double progress;
+
+  const _ClassroomBubblePainter(this.progress);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final positions = <(double, double, double)>[
+      (0.10, 0.24, 16),
+      (0.88, 0.31, 23),
+      (0.16, 0.53, 10),
+      (0.92, 0.62, 14),
+      (0.07, 0.76, 22),
+      (0.84, 0.84, 12),
+    ];
+    const colors = [
+      Color(0xBB32D9F2),
+      Color(0xBBFF71B8),
+      Color(0xBBC3F45B),
+      Color(0xBB6CA8FF),
+      Color(0xBBF7C84A),
+      Color(0xBB9A77FF),
+    ];
+    for (var i = 0; i < positions.length; i++) {
+      final (x, y, radius) = positions[i];
+      final phase = progress * 2 * math.pi + i * 1.15;
+      final travel = (progress + y * 0.22 + i * 0.09) % 1.0;
+      final center = Offset(
+        size.width * x + math.sin(phase) * 7,
+        size.height * (1.08 - travel * 1.24) + math.sin(phase) * 8,
+      );
+      final color = colors[i % colors.length];
+      final fill = Paint()..color = color;
+      final outline = Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.5;
+      canvas.drawCircle(center, radius, i.isEven ? fill : outline);
+      canvas.drawCircle(
+        center.translate(-radius * 0.28, -radius * 0.30),
+        radius * 0.23,
+        Paint()..color = const Color(0xDDFFFFFF),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _ClassroomBubblePainter oldDelegate) =>
+      oldDelegate.progress != progress;
 }
 
 class AppMenuDrawer extends StatefulWidget {
@@ -240,6 +433,7 @@ class _AppMenuDrawerState extends State<AppMenuDrawer> {
   static const _adminEmail = 'talkwithhands06@gmail.com';
   bool _isAdmin = false;
   bool _adminStatusLoaded = false;
+  String? _profilePhotoUrl;
 
   @override
   void initState() {
@@ -249,10 +443,18 @@ class _AppMenuDrawerState extends State<AppMenuDrawer> {
 
   Future<void> _loadAdminStatus() async {
     final cached = await AuthService.cachedProfile();
+    final cachedPhoto = cached == null
+        ? null
+        : await AuthService.cachedProfilePhoto(cached.id);
     if (mounted && _isAdminProfile(cached)) {
       setState(() {
         _isAdmin = true;
         _adminStatusLoaded = true;
+        _profilePhotoUrl = _nonEmpty(cached?.photoUrl) ?? _nonEmpty(cachedPhoto);
+      });
+    } else if (mounted) {
+      setState(() {
+        _profilePhotoUrl = _nonEmpty(cached?.photoUrl) ?? _nonEmpty(cachedPhoto);
       });
     }
 
@@ -261,11 +463,37 @@ class _AppMenuDrawerState extends State<AppMenuDrawer> {
     setState(() {
       _isAdmin = _isAdminProfile(profile) || _isAdmin;
       _adminStatusLoaded = true;
+      _profilePhotoUrl = _nonEmpty(profile?.photoUrl) ?? _profilePhotoUrl;
     });
+  }
+
+  String? _nonEmpty(String? value) {
+    final trimmed = value?.trim();
+    return trimmed == null || trimmed.isEmpty ? null : trimmed;
+  }
+
+  String _resolvedPhotoUrl(String value) {
+    if (value.startsWith('http://') || value.startsWith('https://')) {
+      return value;
+    }
+    final baseUrl = ApiConfig.baseUrl;
+    if (baseUrl.isEmpty) return value;
+    return value.startsWith('/') ? '$baseUrl$value' : '$baseUrl/$value';
   }
 
   bool _isAdminProfile(dynamic profile) {
     return profile?.email?.trim().toLowerCase() == _adminEmail;
+  }
+
+  void _navigateFromDrawer(String destination, WidgetBuilder builder) {
+    final navigator = Navigator.of(context);
+    navigator.pop();
+    if (widget.activeScreen == destination) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!navigator.mounted) return;
+      navigator.push(MaterialPageRoute(builder: builder));
+    });
   }
 
   Future<void> _logout() async {
@@ -283,7 +511,7 @@ class _AppMenuDrawerState extends State<AppMenuDrawer> {
     final compact = MediaQuery.sizeOf(context).height < 700;
 
     return Align(
-      alignment: Alignment.centerRight,
+      alignment: Alignment.centerLeft,
       child: Material(
         color: Colors.transparent,
         child: Container(
@@ -293,15 +521,11 @@ class _AppMenuDrawerState extends State<AppMenuDrawer> {
             gradient: const LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [
-                Color(0xFF1A6FD4),
-                Color(0xFF1387C9),
-                Color(0xFF0D567E),
-              ],
+              colors: [Color(0xFF1D5CAD), Color(0xFF154687)],
             ),
             borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(48),
-              bottomLeft: Radius.circular(48),
+              topRight: Radius.circular(48),
+              bottomRight: Radius.circular(48),
             ),
             border: Border.all(
               color: Colors.white.withValues(alpha: 0.35),
@@ -311,7 +535,7 @@ class _AppMenuDrawerState extends State<AppMenuDrawer> {
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.3),
                 blurRadius: 32,
-                offset: const Offset(-8, 0),
+              offset: const Offset(8, 0),
               ),
             ],
           ),
@@ -325,38 +549,6 @@ class _AppMenuDrawerState extends State<AppMenuDrawer> {
                   // Header with close button
                   Row(
                     children: [
-                      // Hand icon — signs directly to the app's purpose
-                      // (sign language) instead of a generic heart, so the
-                      // menu identity is instantly recognizable.
-                      Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFF39D8E8), Color(0xFF1387C9)],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.75),
-                            width: 2,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.14),
-                              blurRadius: 5,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: const Icon(
-                          Icons.front_hand_rounded,
-                          color: Colors.white,
-                          size: 22,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -425,7 +617,7 @@ class _AppMenuDrawerState extends State<AppMenuDrawer> {
                   Container(
                     margin: const EdgeInsets.only(bottom: 12),
                     padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
@@ -450,8 +642,8 @@ class _AppMenuDrawerState extends State<AppMenuDrawer> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Container(
-                          width: 26,
-                          height: 26,
+                          width: 38,
+                          height: 38,
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
                             gradient: const LinearGradient(
@@ -463,27 +655,46 @@ class _AppMenuDrawerState extends State<AppMenuDrawer> {
                               width: 1,
                             ),
                           ),
-                          child: Text(
-                            widget.userName.isNotEmpty
-                                ? widget.userName[0].toUpperCase()
-                                : '?',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
+                          child: _profilePhotoUrl == null
+                              ? Text(
+                                  widget.userName.isNotEmpty
+                                      ? widget.userName[0].toUpperCase()
+                                      : '?',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                )
+                              : ClipOval(
+                                  child: Image.network(
+                                    _resolvedPhotoUrl(_profilePhotoUrl!),
+                                    width: 38,
+                                    height: 38,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) => Text(
+                                      widget.userName.isNotEmpty
+                                          ? widget.userName[0].toUpperCase()
+                                          : '?',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                  ),
+                                ),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 10),
                         const Icon(Icons.waving_hand_rounded,
-                            color: Colors.white, size: 14),
-                        const SizedBox(width: 6),
+                            color: Colors.white, size: 18),
+                        const SizedBox(width: 8),
                         Flexible(
                           child: Text(
                             'Hi, ${widget.userName}!',
                             style: const TextStyle(
                               color: Colors.white,
-                              fontSize: 13,
+                              fontSize: 16,
                               fontWeight: FontWeight.w700,
                             ),
                             overflow: TextOverflow.ellipsis,
@@ -526,63 +737,46 @@ class _AppMenuDrawerState extends State<AppMenuDrawer> {
                       icon: Icons.analytics_rounded,
                       title: 'Analytics',
                       active: widget.activeScreen == 'Analytics',
-                      onTap: () {
-                        Navigator.of(context).pop();
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                AdminAnalyticsScreen(userName: widget.userName),
-                          ),
-                        );
-                      },
+                      onTap: () => _navigateFromDrawer(
+                        'Analytics',
+                        (_) => AdminAnalyticsScreen(userName: widget.userName),
+                      ),
                     ),
                     _MenuTile(
                       icon: Icons.sort_by_alpha_rounded,
                       title: 'Alphabets',
                       active: widget.activeScreen == 'ALPHABETS',
-                      onTap: () {
-                        Navigator.of(context).pop();
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => AdminContentScreen(
-                              userName: widget.userName,
-                              initialTab: AdminContentTab.alphabets,
-                            ),
-                          ),
-                        );
-                      },
+                      onTap: () => _navigateFromDrawer(
+                        'ALPHABETS',
+                        (_) => AdminContentScreen(
+                          userName: widget.userName,
+                          initialTab: AdminContentTab.alphabets,
+                        ),
+                      ),
                     ),
                     _MenuTile(
                       icon: Icons.pin_rounded,
                       title: 'Numbers',
                       active: widget.activeScreen == 'NUMBERS',
-                      onTap: () {
-                        Navigator.of(context).pop();
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => AdminContentScreen(
-                              userName: widget.userName,
-                              initialTab: AdminContentTab.numbers,
-                            ),
-                          ),
-                        );
-                      },
+                      onTap: () => _navigateFromDrawer(
+                        'NUMBERS',
+                        (_) => AdminContentScreen(
+                          userName: widget.userName,
+                          initialTab: AdminContentTab.numbers,
+                        ),
+                      ),
                     ),
                     _MenuTile(
                       icon: Icons.book_rounded,
                       title: 'Basic Words',
                       active: widget.activeScreen == 'BASIC WORDS',
-                      onTap: () {
-                        Navigator.of(context).pop();
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => AdminContentScreen(
-                              userName: widget.userName,
-                              initialTab: AdminContentTab.basicWords,
-                            ),
-                          ),
-                        );
-                      },
+                      onTap: () => _navigateFromDrawer(
+                        'BASIC WORDS',
+                        (_) => AdminContentScreen(
+                          userName: widget.userName,
+                          initialTab: AdminContentTab.basicWords,
+                        ),
+                      ),
                     ),
                     _MenuTile(
                       icon: Icons.logout_rounded,
@@ -594,15 +788,10 @@ class _AppMenuDrawerState extends State<AppMenuDrawer> {
                       icon: Icons.bar_chart_rounded,
                       title: 'Progress',
                       active: widget.activeScreen == 'Progress',
-                      onTap: () {
-                        Navigator.of(context).pop();
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                ProgressScreen(userName: widget.userName),
-                          ),
-                        );
-                      },
+                      onTap: () => _navigateFromDrawer(
+                        'Progress',
+                        (_) => ProgressScreen(userName: widget.userName),
+                      ),
                     ),
                     SizedBox(height: compact ? 4 : 8),
                     _SectionLabel(label: 'LEARN & PRACTICE'),
@@ -610,69 +799,46 @@ class _AppMenuDrawerState extends State<AppMenuDrawer> {
                       icon: Icons.sort_by_alpha_rounded,
                       title: 'Alphabets',
                       active: widget.activeScreen == 'Alphabets',
-                      onTap: () {
-                        Navigator.of(context).pop();
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                AlphabetsScreen(userName: widget.userName),
-                          ),
-                        );
-                      },
+                      onTap: () => _navigateFromDrawer(
+                        'Alphabets',
+                        (_) => AlphabetsScreen(userName: widget.userName),
+                      ),
                     ),
                     _MenuTile(
                       icon: Icons.pin_rounded,
                       title: 'Numbers',
                       active: widget.activeScreen == 'Numbers',
-                      onTap: () {
-                        Navigator.of(context).pop();
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                NumbersScreen(userName: widget.userName),
-                          ),
-                        );
-                      },
+                      onTap: () => _navigateFromDrawer(
+                        'Numbers',
+                        (_) => NumbersScreen(userName: widget.userName),
+                      ),
                     ),
                     _MenuTile(
                       icon: Icons.book_rounded,
                       title: 'Basic Words',
                       active: widget.activeScreen == 'Basic Words',
-                      onTap: () {
-                        Navigator.of(context).pop();
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                BasicWordsScreen(userName: widget.userName),
-                          ),
-                        );
-                      },
+                      onTap: () => _navigateFromDrawer(
+                        'Basic Words',
+                        (_) => BasicWordsScreen(userName: widget.userName),
+                      ),
                     ),
                     _MenuTile(
                       icon: Icons.pan_tool_alt_rounded,
                       title: 'Sign to Text',
                       active: widget.activeScreen == 'Sign to Text',
-                      onTap: () {
-                        Navigator.of(context).pop();
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const SignDetectorScreen(),
-                          ),
-                        );
-                      },
+                      onTap: () => _navigateFromDrawer(
+                        'Sign to Text',
+                        (_) => const SignDetectorScreen(),
+                      ),
                     ),
                     _MenuTile(
                       icon: Icons.threesixty_rounded,
                       title: '180° Pictures',
                       active: widget.activeScreen == '180 Pictures',
                       onTap: () {
-                        Navigator.of(context).pop();
-                        if (widget.activeScreen == '180 Pictures') return;
-                        Navigator.of(context).pushReplacement(
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                PanoramaScreen(userName: widget.userName),
-                          ),
+                        _navigateFromDrawer(
+                          '180 Pictures',
+                          (_) => PanoramaScreen(userName: widget.userName),
                         );
                       },
                     ),
@@ -680,15 +846,10 @@ class _AppMenuDrawerState extends State<AppMenuDrawer> {
                       icon: Icons.sports_esports_rounded,
                       title: 'Game',
                       active: widget.activeScreen == 'Game',
-                      onTap: () {
-                        Navigator.of(context).pop();
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                GameHubScreen(userName: widget.userName),
-                          ),
-                        );
-                      },
+                      onTap: () => _navigateFromDrawer(
+                        'Game',
+                        (_) => GameHubScreen(userName: widget.userName),
+                      ),
                     ),
                     SizedBox(height: compact ? 6 : 12),
                     _SectionLabel(label: 'PROFILE'),
@@ -696,28 +857,19 @@ class _AppMenuDrawerState extends State<AppMenuDrawer> {
                       icon: Icons.settings_rounded,
                       title: 'Settings',
                       active: widget.activeScreen == 'Settings',
-                      onTap: () {
-                        Navigator.of(context).pop();
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const SettingsScreen(),
-                          ),
-                        );
-                      },
+                      onTap: () => _navigateFromDrawer(
+                        'Settings',
+                        (_) => const SettingsScreen(),
+                      ),
                     ),
                     _MenuTile(
                       icon: Icons.info_rounded,
                       title: 'About us',
                       active: widget.activeScreen == 'About us',
-                      onTap: () {
-                        Navigator.of(context).pop();
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                AboutUsScreen(userName: widget.userName),
-                          ),
-                        );
-                      },
+                      onTap: () => _navigateFromDrawer(
+                        'About us',
+                        (_) => AboutUsScreen(userName: widget.userName),
+                      ),
                     ),
                   ],
                 ],
@@ -868,18 +1020,30 @@ class AppMenuIconButton extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         shape: BoxShape.circle,
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF19B9C2), Color(0xFF078B9B)],
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.16),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
+            color: const Color(0xFF001B36).withValues(alpha: 0.72),
+            blurRadius: 18,
+            spreadRadius: 1.5,
+            offset: const Offset(0, 5),
+          ),
+          BoxShadow(
+            color: const Color(0xFF54C8FF).withValues(alpha: 0.40),
+            blurRadius: 12,
+            spreadRadius: 1,
+            offset: const Offset(0, 1),
           ),
         ],
       ),
       child: Material(
-        color: const Color(0xFF0697B4),
+        color: Colors.transparent,
         shape: const CircleBorder(
-          side: BorderSide(color: Colors.white, width: 2.2),
+          side: BorderSide(color: Colors.white, width: 3),
         ),
         child: InkWell(
           customBorder: const CircleBorder(),
@@ -890,7 +1054,7 @@ class AppMenuIconButton extends StatelessWidget {
             child: Icon(
               Icons.menu_rounded,
               color: Colors.white,
-              size: size * 0.72,
+              size: size * 0.76,
             ),
           ),
         ),
@@ -973,56 +1137,33 @@ class _MenuTile extends StatelessWidget {
               vertical: compact ? 8 : 10,
             ),
             decoration: BoxDecoration(
-              gradient: active
-                  ? const LinearGradient(
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                      colors: [
-                        Color(0xFF0697B4),
-                        Color(0xFF0697B4),
-                      ],
-                    )
-                  : null,
-              color: active ? null : Colors.white.withValues(alpha: 0.10),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: active
+                    ? const [Color(0xFF245A91), Color(0xFF123B68)]
+                    : const [Color(0xFF3479C7), Color(0xFF1B4F99)],
+              ),
               borderRadius: BorderRadius.circular(999),
               border: Border.all(
                 color: active
-                    ? Colors.white
-                    : Colors.white.withValues(alpha: 0.22),
-                width: active ? 2.2 : 1,
+                    ? Colors.white.withValues(alpha: 0.9)
+                    : Colors.white.withValues(alpha: 0.48),
+                width: active ? 3 : 1.2,
               ),
-              boxShadow: active
-                  ? [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.18),
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
-                      ),
-                    ]
-                  : null,
+              boxShadow: [
+                BoxShadow(
+                  color: active
+                      ? Colors.white.withValues(alpha: 0.3)
+                      : const Color(0xFF0B2942).withValues(alpha: 0.1),
+                  blurRadius: active ? 6 : 5,
+                  spreadRadius: active ? 0.5 : 0,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
             child: Row(
               children: [
-                // Solid accent bar — an unmissable "you are here" cue that
-                // doesn't rely on subtle color/opacity shifts alone.
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  width: active ? 4 : 0,
-                  height: compact ? 22 : 26,
-                  margin: EdgeInsets.only(right: active ? 8 : 0),
-                  decoration: BoxDecoration(
-                    color: kAccent,
-                    borderRadius: BorderRadius.circular(4),
-                    boxShadow: active
-                        ? [
-                            BoxShadow(
-                              color: kAccent.withValues(alpha: 0.8),
-                              blurRadius: 8,
-                            ),
-                          ]
-                        : null,
-                  ),
-                ),
                 Container(
                   width: compact ? 34 : 38,
                   height: compact ? 34 : 38,
@@ -1030,9 +1171,7 @@ class _MenuTile extends StatelessWidget {
                     gradient: LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
-                      colors: active
-                          ? const [Color(0xFF5CEBFA), Color(0xFF1387C9)]
-                          : const [Color(0xFF39D8E8), Color(0xFF0D567E)],
+                      colors: const [Color(0xFF19B9C2), Color(0xFF078B9B)],
                     ),
                     shape: BoxShape.circle,
                     border: Border.all(
@@ -1043,10 +1182,8 @@ class _MenuTile extends StatelessWidget {
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: (active ? kAccent : const Color(0xFF39D8E8))
-                            .withValues(alpha: active ? 0.75 : 0.45),
-                        blurRadius: active ? 14 : 8,
-                        spreadRadius: active ? 0.5 : 0,
+                        color: const Color(0xFF39D8E8).withValues(alpha: 0.4),
+                        blurRadius: 8,
                         offset: const Offset(0, 2),
                       ),
                     ],
@@ -1069,25 +1206,21 @@ class _MenuTile extends StatelessWidget {
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: compact ? 14 : 16,
-                      fontWeight: active ? FontWeight.w800 : FontWeight.w600,
+                      fontWeight: active ? FontWeight.w900 : FontWeight.w700,
                       letterSpacing: active ? 0.5 : 0.2,
-                      shadows: active
-                          ? const [
-                              Shadow(
-                                color: Color(0x99000000),
-                                blurRadius: 2,
-                                offset: Offset(0, 1),
-                              ),
-                            ]
-                          : null,
+                      shadows: const [
+                        Shadow(
+                          color: Color(0xAA001B36),
+                          blurRadius: 3,
+                          offset: Offset(0, 1),
+                        ),
+                      ],
                     ),
                   ),
                 ),
                 Icon(
                   Icons.chevron_right_rounded,
-                  color: active
-                      ? Colors.white.withValues(alpha: 0.95)
-                      : Colors.white.withValues(alpha: 0.4),
+                  color: active ? kAccent : Colors.white,
                   size: compact ? 18 : 20,
                 ),
               ],

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -11,6 +12,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../classifiers/sign_classifier.dart';
 import '../painters/landmark_painter.dart';
+import '../services/face_zone_service.dart';
 import '../ui/background_music_region.dart';
 
 // ─── Palette ──────────────────────────────────────────────────────────────────
@@ -23,22 +25,89 @@ const Color kOrange = Color(0xFFFF9500);
 
 // ─── Static labels (snapshot) ─────────────────────────────────────────────────
 const List<String> kFallbackStaticLabels = [
-  'A','B','C','D','E','F','G','H','I',
-  'K','L','M','N','O','P','Q','R','S','T',
-  'U','V','W','X','Y',
-  '0','1','2','3','4','5','6','7','8','9',
-  '10','11','12','13','14','15','16','17','18','19','20',
-  'yes','no','stop','more','need','want',
-  'good','bad','love','me','you','i',
+  'A',
+  'B',
+  'C',
+  'D',
+  'E',
+  'F',
+  'G',
+  'H',
+  'I',
+  'K',
+  'L',
+  'M',
+  'N',
+  'O',
+  'P',
+  'Q',
+  'R',
+  'S',
+  'T',
+  'U',
+  'V',
+  'W',
+  'X',
+  'Y',
+  '0',
+  '1',
+  '2',
+  '3',
+  '4',
+  '5',
+  '6',
+  '7',
+  '8',
+  '9',
+  '10',
+  '11',
+  '12',
+  '13',
+  '14',
+  '15',
+  '16',
+  '17',
+  '18',
+  '19',
+  '20',
+  'yes',
+  'no',
+  'stop',
+  'more',
+  'need',
+  'want',
+  'good',
+  'bad',
+  'love',
+  'me',
+  'you',
+  'i',
 ];
 
 // ─── Dynamic labels (sequence) ────────────────────────────────────────────────
 const List<String> kFallbackDynamicLabels = [
-  'J','Z',
-  'hello','thank you','please','sorry',
-  'help','come','go','eat','drink','water',
-  'i love you','friend','home','work','school',
-  'play','run','learn','find','feel',
+  'J',
+  'Z',
+  'hello',
+  'thank you',
+  'please',
+  'sorry',
+  'help',
+  'come',
+  'go',
+  'eat',
+  'drink',
+  'water',
+  'i love you',
+  'friend',
+  'home',
+  'work',
+  'school',
+  'play',
+  'run',
+  'learn',
+  'find',
+  'feel',
 ];
 
 const int kSamplesPerLabel = 20;
@@ -63,7 +132,8 @@ class DataCollectionScreen extends StatefulWidget {
 
 class _DataCollectionScreenState extends State<DataCollectionScreen>
     with WidgetsBindingObserver {
-  static const _exportsChannel = MethodChannel('talkwithhands/training_exports');
+  static const _exportsChannel =
+      MethodChannel('talkwithhands/training_exports');
 
   // Camera
   CameraController? _cameraController;
@@ -76,11 +146,13 @@ class _DataCollectionScreenState extends State<DataCollectionScreen>
 
   // MediaPipe
   late final mp_hand.HandLandmarkerPlugin _handLandmarker;
+  final FaceZoneService _faceZones = FaceZoneService();
 
   // UI / loading
   bool _loading = true;
   String _loadText = 'Initializing...';
   List<HandLandmark>? _handLandmarks;
+  List<List<HandLandmark>>? _handsLandmarks;
   Size? _displayPreviewSize;
   int _sensorOrientation = 0;
   List<String> _staticLabels = kFallbackStaticLabels;
@@ -119,7 +191,7 @@ class _DataCollectionScreenState extends State<DataCollectionScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _handLandmarker = mp_hand.HandLandmarkerPlugin.create(
-      numHands: 1,
+      numHands: 2,
       minHandDetectionConfidence: 0.55,
       delegate: mp_hand.HandLandmarkerDelegate.cpu,
     );
@@ -131,18 +203,26 @@ class _DataCollectionScreenState extends State<DataCollectionScreen>
     WidgetsBinding.instance.removeObserver(this);
     _stopStream();
     _cameraController?.dispose();
+    unawaited(_faceZones.dispose());
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused) _stopStream();
-    if (state == AppLifecycleState.resumed && _cameraInitialized) _startStream();
+    if (state == AppLifecycleState.paused) {
+      _stopStream();
+    }
+    if (state == AppLifecycleState.resumed && _cameraInitialized) {
+      _startStream();
+    }
   }
 
   Future<void> _init() async {
     if (!_isAndroid) {
-      setState(() { _loadText = 'Android device required.'; _loading = false; });
+      setState(() {
+        _loadText = 'Android device required.';
+        _loading = false;
+      });
       return;
     }
     await _loadCollectionLabels();
@@ -161,7 +241,8 @@ class _DataCollectionScreenState extends State<DataCollectionScreen>
       };
       final basicWords = <String>{};
       for (final item in data.whereType<Map>()) {
-        final category = (item['category'] ?? '').toString().trim().toLowerCase();
+        final category =
+            (item['category'] ?? '').toString().trim().toLowerCase();
         final title = (item['title'] ?? '').toString().trim();
         if (title.isEmpty) continue;
         if (category == 'alphabet') continue;
@@ -185,7 +266,8 @@ class _DataCollectionScreenState extends State<DataCollectionScreen>
       if (sortedBasicWords.isEmpty || !mounted) return;
       setState(() {
         _staticLabels = [
-          ...kFallbackStaticLabels.where((label) => int.tryParse(label) == null),
+          ...kFallbackStaticLabels
+              .where((label) => int.tryParse(label) == null),
           ...sortedNumbers,
           ...sortedBasicWords,
         ];
@@ -209,11 +291,21 @@ class _DataCollectionScreenState extends State<DataCollectionScreen>
         final dir = Directory('${ext.path}/sign_data');
         await dir.create(recursive: true);
 
-        // Static CSV
-        _staticCsvPath = '${dir.path}/sign_landmarks.csv';
+        // Versioned static CSV: up to two hands and face-placement geometry.
+        _staticCsvPath = '${dir.path}/sign_landmarks_v2.csv';
         final staticFile = File(_staticCsvPath!);
         if (!staticFile.existsSync()) {
-          final cols = List.generate(21, (i) => 'x$i,y$i,z$i').join(',');
+          final handColumns = List.generate(
+            2,
+            (hand) => List.generate(
+              21,
+              (point) =>
+                  'hand${hand}_x$point,hand${hand}_y$point,hand${hand}_z$point',
+            ).join(','),
+          ).join(',');
+          const faceColumns =
+              'face_left,face_top,face_width,face_height,face_eye_y,face_mouth_y,face_center_x';
+          final cols = 'hand_count,$handColumns,face_present,$faceColumns';
           await staticFile.writeAsString('label,$cols\n');
         }
 
@@ -223,7 +315,8 @@ class _DataCollectionScreenState extends State<DataCollectionScreen>
         if (!seqFile.existsSync()) {
           final cols = List.generate(
             kSequenceFrames,
-            (f) => List.generate(21, (i) => 'f${f}_x$i,f${f}_y$i,f${f}_z$i').join(','),
+            (f) => List.generate(21, (i) => 'f${f}_x$i,f${f}_y$i,f${f}_z$i')
+                .join(','),
           ).join(',');
           await seqFile.writeAsString('label,$cols\n');
         }
@@ -239,7 +332,10 @@ class _DataCollectionScreenState extends State<DataCollectionScreen>
     if (status.isGranted) {
       await _initCamera();
     } else {
-      setState(() { _loadText = 'Camera permission denied.'; _loading = false; });
+      setState(() {
+        _loadText = 'Camera permission denied.';
+        _loading = false;
+      });
     }
   }
 
@@ -248,7 +344,10 @@ class _DataCollectionScreenState extends State<DataCollectionScreen>
     try {
       final cameras = await availableCameras();
       if (cameras.isEmpty) {
-        setState(() { _loadText = 'No cameras found.'; _loading = false; });
+        setState(() {
+          _loadText = 'No cameras found.';
+          _loading = false;
+        });
         return;
       }
       final camera = cameras.firstWhere(
@@ -256,7 +355,8 @@ class _DataCollectionScreenState extends State<DataCollectionScreen>
         orElse: () => cameras.first,
       );
       final controller = CameraController(
-        camera, ResolutionPreset.low,
+        camera,
+        ResolutionPreset.low,
         enableAudio: false,
         imageFormatGroup: ImageFormatGroup.yuv420,
       );
@@ -268,10 +368,16 @@ class _DataCollectionScreenState extends State<DataCollectionScreen>
       final ps = controller.value.previewSize;
       if (ps != null) _displayPreviewSize = Size(ps.height, ps.width);
 
-      setState(() { _cameraInitialized = true; _loading = false; });
+      setState(() {
+        _cameraInitialized = true;
+        _loading = false;
+      });
       await _startStream();
     } catch (e) {
-      setState(() { _loadText = 'Camera error: $e'; _loading = false; });
+      setState(() {
+        _loadText = 'Camera error: $e';
+        _loading = false;
+      });
     }
   }
 
@@ -287,7 +393,9 @@ class _DataCollectionScreenState extends State<DataCollectionScreen>
   Future<void> _stopStream() async {
     final c = _cameraController;
     if (c == null || !_streaming) return;
-    try { await c.stopImageStream(); } catch (_) {}
+    try {
+      await c.stopImageStream();
+    } catch (_) {}
     _streaming = false;
     _processing = false;
   }
@@ -297,7 +405,9 @@ class _DataCollectionScreenState extends State<DataCollectionScreen>
     _frameCounter++;
     if (_frameCounter % 8 != 0) return;
     final now = DateTime.now();
-    if (now.difference(_lastInferenceAt) < const Duration(milliseconds: 220)) return;
+    if (now.difference(_lastInferenceAt) < const Duration(milliseconds: 220)) {
+      return;
+    }
     _lastInferenceAt = now;
     _processFrame(image, now);
   }
@@ -306,12 +416,19 @@ class _DataCollectionScreenState extends State<DataCollectionScreen>
     _processing = true;
     try {
       if (image.planes.length < 3) return;
-      List<HandLandmark>? landmarks;
+      if (_collectMode == _CollectMode.static_) {
+        unawaited(_faceZones.maybeUpdate(image, _sensorOrientation));
+      }
+      List<List<HandLandmark>>? hands;
       try {
         final detected = _handLandmarker.detect(image, _sensorOrientation);
         if (detected.isNotEmpty) {
-          landmarks = detected.first.landmarks
-              .map((lm) => HandLandmark(lm.x, lm.y, lm.z))
+          hands = detected
+              .take(2)
+              .map((hand) => hand.landmarks
+                  .map((lm) => HandLandmark(lm.x, lm.y, lm.z))
+                  .toList(growable: false))
+              .where((hand) => hand.length >= 21)
               .toList(growable: false);
         }
       } catch (e) {
@@ -319,22 +436,27 @@ class _DataCollectionScreenState extends State<DataCollectionScreen>
       }
 
       if (!mounted) return;
-      final handPresenceChanged = (landmarks == null) != (_handLandmarks == null);
-      _handLandmarks = landmarks;
+      final handPresenceChanged =
+          (hands == null || hands.isEmpty) != (_handsLandmarks == null);
+      _handsLandmarks = hands;
+      _handLandmarks = hands == null || hands.isEmpty ? null : hands.first;
       if (handPresenceChanged ||
-          now.difference(_lastUiUpdateAt) >= const Duration(milliseconds: 180)) {
+          now.difference(_lastUiUpdateAt) >=
+              const Duration(milliseconds: 180)) {
         _lastUiUpdateAt = now;
         setState(() {});
       }
 
-      if (landmarks == null) return;
+      if (hands == null || hands.isEmpty) return;
+      final landmarks = hands.first;
 
       // ── Static auto-capture ──────────────────────────────────────────────
       if (_staticRecording &&
           _collectMode == _CollectMode.static_ &&
-          now.difference(_lastStaticCapture).inMilliseconds >= kCaptureCooldownMs) {
+          now.difference(_lastStaticCapture).inMilliseconds >=
+              kCaptureCooldownMs) {
         _lastStaticCapture = now;
-        await _saveStaticSample(landmarks);
+        await _saveStaticSample(hands);
       }
 
       // ── Sequence frame capture ───────────────────────────────────────────
@@ -358,13 +480,47 @@ class _DataCollectionScreenState extends State<DataCollectionScreen>
 
   // ── Save static ───────────────────────────────────────────────────────────
 
-  Future<void> _saveStaticSample(List<HandLandmark> landmarks) async {
+  List<HandLandmark> _uprightLandmarks(List<HandLandmark> landmarks) =>
+      landmarks.map((landmark) {
+        final point = FaceZoneService.toUprightPoint(
+          landmark.x,
+          landmark.y,
+          _sensorOrientation,
+        );
+        return HandLandmark(point.dx, point.dy, landmark.z);
+      }).toList(growable: false);
+
+  Future<void> _saveStaticSample(List<List<HandLandmark>> hands) async {
     if (_staticCsvPath == null) return;
-    final values = landmarks
-        .map((lm) => '${lm.x.toStringAsFixed(6)},${lm.y.toStringAsFixed(6)},${lm.z.toStringAsFixed(6)}')
-        .join(',');
+    final face = _faceZones.normalizedFaceFeatures;
+    final orderedHands = hands.map(_uprightLandmarks).toList()
+      ..sort((a, b) => a.first.x.compareTo(b.first.x));
+    final values = StringBuffer()..write(orderedHands.length);
+    for (var handIndex = 0; handIndex < 2; handIndex++) {
+      final hand =
+          handIndex < orderedHands.length ? orderedHands[handIndex] : null;
+      for (var pointIndex = 0; pointIndex < 21; pointIndex++) {
+        final point = hand != null && pointIndex < hand.length
+            ? hand[pointIndex]
+            : const HandLandmark(0, 0, 0);
+        values
+          ..write(',')
+          ..write(point.x.toStringAsFixed(6))
+          ..write(',')
+          ..write(point.y.toStringAsFixed(6))
+          ..write(',')
+          ..write(point.z.toStringAsFixed(6));
+      }
+    }
+    values.write(face == null ? ',0' : ',1');
+    for (var index = 0; index < 7; index++) {
+      values
+        ..write(',')
+        ..write((face == null ? 0 : face[index]).toStringAsFixed(6));
+    }
     try {
-      await File(_staticCsvPath!).writeAsString('$_staticLabel,$values\n', mode: FileMode.append);
+      await File(_staticCsvPath!)
+          .writeAsString('$_staticLabel,$values\n', mode: FileMode.append);
       setState(() {
         _counts[_staticLabel] = (_counts[_staticLabel] ?? 0) + 1;
         _totalWritten++;
@@ -373,9 +529,11 @@ class _DataCollectionScreenState extends State<DataCollectionScreen>
       Future.delayed(const Duration(milliseconds: 120), () {
         if (mounted) setState(() => _flashVisible = false);
       });
-      if ((_counts[_staticLabel] ?? 0) >= kSamplesPerLabel && _staticRecording) {
+      if ((_counts[_staticLabel] ?? 0) >= kSamplesPerLabel &&
+          _staticRecording) {
         setState(() => _staticRecording = false);
-        _showSnack('✓ $_staticLabel complete — $kSamplesPerLabel samples saved');
+        _showSnack(
+            '✓ $_staticLabel complete — $kSamplesPerLabel samples saved');
       }
     } catch (e) {
       debugPrint('Static write error: $e');
@@ -389,12 +547,14 @@ class _DataCollectionScreenState extends State<DataCollectionScreen>
     final sb = StringBuffer()..write(_seqLabel);
     for (final frame in frames) {
       for (final lm in frame) {
-        sb.write(',${lm.x.toStringAsFixed(6)},${lm.y.toStringAsFixed(6)},${lm.z.toStringAsFixed(6)}');
+        sb.write(
+            ',${lm.x.toStringAsFixed(6)},${lm.y.toStringAsFixed(6)},${lm.z.toStringAsFixed(6)}');
       }
     }
     sb.write('\n');
     try {
-      await File(_seqCsvPath!).writeAsString(sb.toString(), mode: FileMode.append);
+      await File(_seqCsvPath!)
+          .writeAsString(sb.toString(), mode: FileMode.append);
       setState(() {
         _counts[_seqLabel] = (_counts[_seqLabel] ?? 0) + 1;
         _totalWritten++;
@@ -413,16 +573,23 @@ class _DataCollectionScreenState extends State<DataCollectionScreen>
   }
 
   void _captureStaticOnce() {
-    final lm = _handLandmarks;
-    if (lm == null) { _showSnack('No hand detected.'); return; }
-    _saveStaticSample(lm);
+    final hands = _handsLandmarks;
+    if (hands == null || hands.isEmpty) {
+      _showSnack('No hand detected.');
+      return;
+    }
+    _saveStaticSample(hands);
   }
 
   void _startSequence() {
     final lm = _handLandmarks;
-    if (lm == null) { _showSnack('Show your hand first.'); return; }
+    if (lm == null) {
+      _showSnack('Show your hand first.');
+      return;
+    }
     if ((_counts[_seqLabel] ?? 0) >= kSamplesPerLabel) {
-      _showSnack('"$_seqLabel" already complete.'); return;
+      _showSnack('"$_seqLabel" already complete.');
+      return;
     }
     setState(() {
       _seqBuffer.clear();
@@ -432,14 +599,18 @@ class _DataCollectionScreenState extends State<DataCollectionScreen>
   }
 
   void _cancelSequence() {
-    setState(() { _seqRecording = false; _seqBuffer.clear(); });
+    setState(() {
+      _seqRecording = false;
+      _seqBuffer.clear();
+    });
   }
 
   String? get _currentCsvPath =>
       _collectMode == _CollectMode.sequence ? _seqCsvPath : _staticCsvPath;
 
-  String get _currentCsvName =>
-      _collectMode == _CollectMode.sequence ? 'sign_sequences.csv' : 'sign_landmarks.csv';
+  String get _currentCsvName => _collectMode == _CollectMode.sequence
+      ? 'sign_sequences.csv'
+      : 'sign_landmarks_v2.csv';
 
   Future<void> _exportCurrentCsv() async {
     final path = _currentCsvPath;
@@ -474,7 +645,8 @@ class _DataCollectionScreenState extends State<DataCollectionScreen>
     if (!mounted) return;
     ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg, style: const TextStyle(color: Colors.white, fontSize: 13)),
+      content:
+          Text(msg, style: const TextStyle(color: Colors.white, fontSize: 13)),
       backgroundColor: const Color(0xFF1A1F2E),
       duration: const Duration(seconds: 2),
       behavior: SnackBarBehavior.floating,
@@ -500,131 +672,195 @@ class _DataCollectionScreenState extends State<DataCollectionScreen>
   }
 
   Widget _buildLoading() => Container(
-    color: kBg,
-    child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-      const SizedBox(width: 44, height: 44,
-        child: CircularProgressIndicator(color: kTeal, strokeWidth: 3)),
-      const SizedBox(height: 16),
-      Text(_loadText, style: const TextStyle(color: Color(0x88FFFFFF), fontSize: 14),
-        textAlign: TextAlign.center),
-    ])),
-  );
+        color: kBg,
+        child: Center(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const SizedBox(
+              width: 44,
+              height: 44,
+              child: CircularProgressIndicator(color: kTeal, strokeWidth: 3)),
+          const SizedBox(height: 16),
+          Text(_loadText,
+              style: const TextStyle(color: Color(0x88FFFFFF), fontSize: 14),
+              textAlign: TextAlign.center),
+        ])),
+      );
 
   Widget _buildMain() => SafeArea(
-    child: Column(children: [
-      _buildTopBar(),
-      _buildModeTabs(),
-      Expanded(child: _buildCamera()),
-      _collectMode == _CollectMode.static_ ? _buildStaticPanel() : _buildSequencePanel(),
-    ]),
-  );
+        child: Column(children: [
+          _buildTopBar(),
+          _buildModeTabs(),
+          Expanded(child: _buildCamera()),
+          _collectMode == _CollectMode.static_
+              ? _buildStaticPanel()
+              : _buildSequencePanel(),
+        ]),
+      );
 
   // ── Top bar ───────────────────────────────────────────────────────────────
 
   Widget _buildTopBar() => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-    decoration: const BoxDecoration(
-      color: Color(0xCC0A0E1A),
-      border: Border(bottom: BorderSide(color: Color(0x1AFFFFFF), width: 0.5)),
-    ),
-    child: Row(children: [
-      GestureDetector(
-        onTap: () => Navigator.of(context).maybePop(),
-        child: const Icon(Icons.arrow_back_ios_new, color: Color(0x99FFFFFF), size: 18),
-      ),
-      const SizedBox(width: 10),
-      const Text('Collect Training Data',
-        style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600)),
-      const Spacer(),
-      Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: BoxDecoration(
-          color: const Color(0x2200E5CC),
-          border: Border.all(color: kTealBorder, width: 0.5),
-          borderRadius: BorderRadius.circular(20),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: const BoxDecoration(
+          color: Color(0xCC0A0E1A),
+          border:
+              Border(bottom: BorderSide(color: Color(0x1AFFFFFF), width: 0.5)),
         ),
-        child: Text('$_totalWritten total',
-          style: const TextStyle(color: kTeal, fontSize: 11, fontWeight: FontWeight.w700)),
-      ),
-    ]),
-  );
+        child: Row(children: [
+          GestureDetector(
+            onTap: () => Navigator.of(context).maybePop(),
+            child: const Icon(Icons.arrow_back_ios_new,
+                color: Color(0x99FFFFFF), size: 18),
+          ),
+          const SizedBox(width: 10),
+          const Text('Collect Training Data',
+              style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600)),
+          const Spacer(),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: const Color(0x2200E5CC),
+              border: Border.all(color: kTealBorder, width: 0.5),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text('$_totalWritten total',
+                style: const TextStyle(
+                    color: kTeal, fontSize: 11, fontWeight: FontWeight.w700)),
+          ),
+        ]),
+      );
 
   // ── Mode tabs ─────────────────────────────────────────────────────────────
 
   Widget _buildModeTabs() => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-    decoration: const BoxDecoration(
-      border: Border(bottom: BorderSide(color: Color(0x1AFFFFFF), width: 0.5)),
-    ),
-    child: Row(children: [
-      _ModeTab(
-        label: '📸  Static signs',
-        subtitle: 'A-Z, 0-20, yes, no...',
-        active: _collectMode == _CollectMode.static_,
-        color: kTeal,
-        onTap: () => setState(() { _collectMode = _CollectMode.static_; _staticRecording = false; _seqRecording = false; }),
-      ),
-      const SizedBox(width: 8),
-      _ModeTab(
-        label: '🎬  Motion signs',
-        subtitle: 'Full basic words',
-        active: _collectMode == _CollectMode.sequence,
-        color: kOrange,
-        onTap: () => setState(() { _collectMode = _CollectMode.sequence; _staticRecording = false; _seqRecording = false; }),
-      ),
-    ]),
-  );
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: const BoxDecoration(
+          border:
+              Border(bottom: BorderSide(color: Color(0x1AFFFFFF), width: 0.5)),
+        ),
+        child: Row(children: [
+          _ModeTab(
+            label: '📸  Static signs',
+            subtitle: 'A-Z, 0-20, yes, no...',
+            active: _collectMode == _CollectMode.static_,
+            color: kTeal,
+            onTap: () => setState(() {
+              _collectMode = _CollectMode.static_;
+              _staticRecording = false;
+              _seqRecording = false;
+            }),
+          ),
+          const SizedBox(width: 8),
+          _ModeTab(
+            label: '🎬  Motion signs',
+            subtitle: 'Full basic words',
+            active: _collectMode == _CollectMode.sequence,
+            color: kOrange,
+            onTap: () => setState(() {
+              _collectMode = _CollectMode.sequence;
+              _staticRecording = false;
+              _seqRecording = false;
+            }),
+          ),
+        ]),
+      );
 
   // ── Camera ────────────────────────────────────────────────────────────────
 
   Widget _buildCamera() {
     final controller = _cameraController;
     if (controller == null || !_cameraInitialized) {
-      return const Center(child: Text('Camera unavailable',
-        style: TextStyle(color: Color(0x66FFFFFF))));
+      return const Center(
+          child: Text('Camera unavailable',
+              style: TextStyle(color: Color(0x66FFFFFF))));
     }
     return LayoutBuilder(builder: (context, constraints) {
       return Stack(fit: StackFit.expand, children: [
-        ClipRect(child: OverflowBox(
+        ClipRect(
+            child: OverflowBox(
           alignment: Alignment.center,
-          child: FittedBox(fit: BoxFit.cover,
-            child: SizedBox(
-              width: constraints.maxWidth,
-              height: constraints.maxWidth *
-                (controller.value.aspectRatio > 0 ? 1 / controller.value.aspectRatio : 16 / 9),
-              child: CameraPreview(controller),
-            )),
+          child: FittedBox(
+              fit: BoxFit.cover,
+              child: SizedBox(
+                width: constraints.maxWidth,
+                height: constraints.maxWidth *
+                    (controller.value.aspectRatio > 0
+                        ? 1 / controller.value.aspectRatio
+                        : 16 / 9),
+                child: CameraPreview(controller),
+              )),
         )),
 
-        if (_handLandmarks != null && _displayPreviewSize != null)
-          CustomPaint(painter: LandmarkPainter(
-            handLandmarks: _handLandmarks,
+        if (_faceZones.faceFresh)
+          CustomPaint(
+            painter: FaceDebugPainter(service: _faceZones, mirror: true),
+          ),
+
+        if (_handsLandmarks != null && _displayPreviewSize != null)
+          CustomPaint(
+              painter: LandmarkPainter(
+            handsLandmarks: _handsLandmarks,
             previewSize: _displayPreviewSize!,
             lensDirection: CameraLensDirection.front,
             sensorOrientation: _sensorOrientation,
           )),
 
-        if (_flashVisible)
-          Container(color: const Color(0x3300E5CC)),
+        if (_flashVisible) Container(color: const Color(0x3300E5CC)),
 
         // No hand badge
-        if (_handLandmarks == null)
-          Align(alignment: Alignment.topCenter,
-            child: Padding(padding: const EdgeInsets.only(top: 16),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                decoration: BoxDecoration(
-                  color: const Color(0xCC0A0E1A),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: const Color(0x33FFFFFF), width: 0.5),
-                ),
-                child: const Text('✋  Show your hand',
-                  style: TextStyle(color: Color(0x99FFFFFF), fontSize: 12)),
-              ))),
+        if (_handsLandmarks == null)
+          Align(
+              alignment: Alignment.topCenter,
+              child: Padding(
+                  padding: const EdgeInsets.only(top: 16),
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xCC0A0E1A),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                          color: const Color(0x33FFFFFF), width: 0.5),
+                    ),
+                    child: const Text('✋  Show one or two hands',
+                        style:
+                            TextStyle(color: Color(0x99FFFFFF), fontSize: 12)),
+                  ))),
+
+        Positioned(
+          top: 16,
+          left: 14,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: const Color(0xCC0A0E1A),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: _faceZones.faceFresh
+                    ? const Color(0xFFFFC107)
+                    : const Color(0x33FFFFFF),
+                width: 0.7,
+              ),
+            ),
+            child: Text(
+              _faceZones.faceFresh ? 'Face detected' : 'Keep face visible',
+              style: TextStyle(
+                color: _faceZones.faceFresh
+                    ? const Color(0xFFFFD54F)
+                    : const Color(0x99FFFFFF),
+                fontSize: 11,
+              ),
+            ),
+          ),
+        ),
 
         // Sequence progress ring
         if (_collectMode == _CollectMode.sequence && _seqRecording)
-          Center(child: _SequenceRing(
+          Center(
+              child: _SequenceRing(
             progress: _seqBuffer.length / kSequenceFrames,
             framesLeft: kSequenceFrames - _seqBuffer.length,
           )),
@@ -635,12 +871,18 @@ class _DataCollectionScreenState extends State<DataCollectionScreen>
 
         // Label watermark
         Positioned(
-          bottom: 12, left: 0, right: 0,
-          child: Center(child: Text(
-            (_collectMode == _CollectMode.static_ ? _staticLabel : _seqLabel).toUpperCase(),
+          bottom: 12,
+          left: 0,
+          right: 0,
+          child: Center(
+              child: Text(
+            (_collectMode == _CollectMode.static_ ? _staticLabel : _seqLabel)
+                .toUpperCase(),
             style: const TextStyle(
-              color: Color(0x2200E5CC), fontSize: 80,
-              fontWeight: FontWeight.w900, height: 1),
+                color: Color(0x2200E5CC),
+                fontSize: 80,
+                fontWeight: FontWeight.w900,
+                height: 1),
           )),
         ),
       ]);
@@ -685,7 +927,8 @@ class _DataCollectionScreenState extends State<DataCollectionScreen>
           if (_staticSearchQuery.trim().isNotEmpty)
             GestureDetector(
               onTap: () => setState(() => _staticSearchQuery = ''),
-              child: const Icon(Icons.clear, color: Color(0x99FFFFFF), size: 15),
+              child:
+                  const Icon(Icons.clear, color: Color(0x99FFFFFF), size: 15),
             ),
         ]),
       ),
@@ -705,24 +948,42 @@ class _DataCollectionScreenState extends State<DataCollectionScreen>
           counts: _counts,
           target: kSamplesPerLabel,
           accentColor: kTeal,
-          onSelect: (lbl) => setState(() { _staticLabel = lbl; _staticRecording = false; }),
+          onSelect: (lbl) => setState(() {
+            _staticLabel = lbl;
+            _staticRecording = false;
+          }),
         ),
       const SizedBox(height: 10),
-      _SampleProgress(label: _staticLabel, count: count, target: kSamplesPerLabel, color: kTeal),
+      _SampleProgress(
+          label: _staticLabel,
+          count: count,
+          target: kSamplesPerLabel,
+          color: kTeal),
       const SizedBox(height: 10),
+      const Text(
+        'Static samples save both hand positions and face placement when visible.',
+        style: TextStyle(color: Color(0x66FFFFFF), fontSize: 11),
+      ),
+      const SizedBox(height: 8),
       Row(children: [
-        Expanded(child: _BigBtn(
+        Expanded(
+            child: _BigBtn(
           label: '+ Capture',
           icon: Icons.camera_alt_outlined,
-          accent: false, color: kTeal,
+          accent: false,
+          color: kTeal,
           enabled: _handLandmarks != null && !done,
           onTap: _captureStaticOnce,
         )),
         const SizedBox(width: 10),
-        Expanded(child: _BigBtn(
+        Expanded(
+            child: _BigBtn(
           label: _staticRecording ? '⏹ Stop' : '⏺ Auto',
-          icon: _staticRecording ? Icons.stop_circle_outlined : Icons.fiber_manual_record,
-          accent: _staticRecording, color: kTeal,
+          icon: _staticRecording
+              ? Icons.stop_circle_outlined
+              : Icons.fiber_manual_record,
+          accent: _staticRecording,
+          color: kTeal,
           enabled: !done,
           onTap: () => setState(() => _staticRecording = !_staticRecording),
         )),
@@ -739,8 +1000,9 @@ class _DataCollectionScreenState extends State<DataCollectionScreen>
       if (_staticCsvPath != null) ...[
         const SizedBox(height: 4),
         Text('→ $_staticCsvPath',
-          style: const TextStyle(color: Color(0x33FFFFFF), fontSize: 10),
-          maxLines: 1, overflow: TextOverflow.ellipsis),
+            style: const TextStyle(color: Color(0x33FFFFFF), fontSize: 10),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis),
       ],
     ]);
   }
@@ -757,10 +1019,18 @@ class _DataCollectionScreenState extends State<DataCollectionScreen>
         counts: _counts,
         target: kSamplesPerLabel,
         accentColor: kOrange,
-        onSelect: (lbl) => setState(() { _seqLabel = lbl; _seqRecording = false; _seqBuffer.clear(); }),
+        onSelect: (lbl) => setState(() {
+          _seqLabel = lbl;
+          _seqRecording = false;
+          _seqBuffer.clear();
+        }),
       ),
       const SizedBox(height: 10),
-      _SampleProgress(label: _seqLabel, count: count, target: kSamplesPerLabel, color: kOrange),
+      _SampleProgress(
+          label: _seqLabel,
+          count: count,
+          target: kSamplesPerLabel,
+          color: kOrange),
       const SizedBox(height: 6),
       // Instruction text
       Text(
@@ -774,10 +1044,13 @@ class _DataCollectionScreenState extends State<DataCollectionScreen>
       ),
       const SizedBox(height: 10),
       Row(children: [
-        Expanded(child: _BigBtn(
+        Expanded(
+            child: _BigBtn(
           label: _seqRecording ? '✕ Cancel' : '⏺ Record',
-          icon: _seqRecording ? Icons.cancel_outlined : Icons.fiber_manual_record,
-          accent: _seqRecording, color: kOrange,
+          icon:
+              _seqRecording ? Icons.cancel_outlined : Icons.fiber_manual_record,
+          accent: _seqRecording,
+          color: kOrange,
           enabled: !done,
           onTap: _seqRecording ? _cancelSequence : _startSequence,
         )),
@@ -794,8 +1067,9 @@ class _DataCollectionScreenState extends State<DataCollectionScreen>
       if (_seqCsvPath != null) ...[
         const SizedBox(height: 4),
         Text('→ $_seqCsvPath',
-          style: const TextStyle(color: Color(0x33FFFFFF), fontSize: 10),
-          maxLines: 1, overflow: TextOverflow.ellipsis),
+            style: const TextStyle(color: Color(0x33FFFFFF), fontSize: 10),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis),
       ],
     ]);
   }
@@ -809,13 +1083,16 @@ class _BottomPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    decoration: const BoxDecoration(
-      color: Color(0xF00A0E1A),
-      border: Border(top: BorderSide(color: Color(0x1AFFFFFF), width: 0.5)),
-    ),
-    padding: const EdgeInsets.fromLTRB(14, 12, 14, 16),
-    child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: children),
-  );
+        decoration: const BoxDecoration(
+          color: Color(0xF00A0E1A),
+          border: Border(top: BorderSide(color: Color(0x1AFFFFFF), width: 0.5)),
+        ),
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 16),
+        child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: children),
+      );
 }
 
 class _ModeTab extends StatelessWidget {
@@ -826,30 +1103,45 @@ class _ModeTab extends StatelessWidget {
   final VoidCallback onTap;
 
   const _ModeTab({
-    required this.label, required this.subtitle,
-    required this.active, required this.color, required this.onTap,
+    required this.label,
+    required this.subtitle,
+    required this.active,
+    required this.color,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) => Expanded(
-    child: GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
-        decoration: BoxDecoration(
-          color: active ? color.withValues(alpha: 0.12) : const Color(0x08FFFFFF),
-          border: Border.all(color: active ? color.withValues(alpha: 0.5) : const Color(0x1AFFFFFF), width: active ? 1 : 0.5),
-          borderRadius: BorderRadius.circular(8),
+        child: GestureDetector(
+          onTap: onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+            decoration: BoxDecoration(
+              color: active
+                  ? color.withValues(alpha: 0.12)
+                  : const Color(0x08FFFFFF),
+              border: Border.all(
+                  color: active
+                      ? color.withValues(alpha: 0.5)
+                      : const Color(0x1AFFFFFF),
+                  width: active ? 1 : 0.5),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(label,
+                  style: TextStyle(
+                      color: active ? color : const Color(0x88FFFFFF),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700)),
+              Text(subtitle,
+                  style:
+                      const TextStyle(color: Color(0x44FFFFFF), fontSize: 10)),
+            ]),
+          ),
         ),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(label, style: TextStyle(color: active ? color : const Color(0x88FFFFFF),
-            fontSize: 12, fontWeight: FontWeight.w700)),
-          Text(subtitle, style: const TextStyle(color: Color(0x44FFFFFF), fontSize: 10)),
-        ]),
-      ),
-    ),
-  );
+      );
 }
 
 class _LabelPicker extends StatelessWidget {
@@ -861,53 +1153,75 @@ class _LabelPicker extends StatelessWidget {
   final ValueChanged<String> onSelect;
 
   const _LabelPicker({
-    required this.labels, required this.selected, required this.counts,
-    required this.target, required this.accentColor, required this.onSelect,
+    required this.labels,
+    required this.selected,
+    required this.counts,
+    required this.target,
+    required this.accentColor,
+    required this.onSelect,
   });
 
   @override
   Widget build(BuildContext context) => Row(children: [
-    const Text('Label:', style: TextStyle(color: Color(0x66FFFFFF), fontSize: 12)),
-    const SizedBox(width: 8),
-    Expanded(child: SizedBox(height: 34,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: labels.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 6),
-        itemBuilder: (context, i) {
-          final lbl = labels[i];
-          final active = lbl == selected;
-          final c = counts[lbl] ?? 0;
-          final full = c >= target;
-          return GestureDetector(
-            onTap: () => onSelect(lbl),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                color: active ? accentColor.withValues(alpha: 0.2) : const Color(0x10FFFFFF),
-                border: Border.all(
-                  color: active ? accentColor.withValues(alpha: 0.5) : const Color(0x1AFFFFFF),
-                  width: active ? 1 : 0.5,
+        const Text('Label:',
+            style: TextStyle(color: Color(0x66FFFFFF), fontSize: 12)),
+        const SizedBox(width: 8),
+        Expanded(
+            child: SizedBox(
+          height: 34,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: labels.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 6),
+            itemBuilder: (context, i) {
+              final lbl = labels[i];
+              final active = lbl == selected;
+              final c = counts[lbl] ?? 0;
+              final full = c >= target;
+              return GestureDetector(
+                onTap: () => onSelect(lbl),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: active
+                        ? accentColor.withValues(alpha: 0.2)
+                        : const Color(0x10FFFFFF),
+                    border: Border.all(
+                      color: active
+                          ? accentColor.withValues(alpha: 0.5)
+                          : const Color(0x1AFFFFFF),
+                      width: active ? 1 : 0.5,
+                    ),
+                    borderRadius: BorderRadius.circular(7),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Text(lbl,
+                        style: TextStyle(
+                            color: active
+                                ? accentColor
+                                : full
+                                    ? const Color(0x66FFFFFF)
+                                    : const Color(0xB3FFFFFF),
+                            fontSize: 12,
+                            fontWeight:
+                                active ? FontWeight.w700 : FontWeight.w400)),
+                    if (c > 0) ...[
+                      const SizedBox(width: 4),
+                      Text('$c',
+                          style: TextStyle(
+                              color:
+                                  full ? const Color(0x55FFFFFF) : accentColor,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700)),
+                    ],
+                  ]),
                 ),
-                borderRadius: BorderRadius.circular(7),
-              ),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Text(lbl, style: TextStyle(
-                  color: active ? accentColor : full ? const Color(0x66FFFFFF) : const Color(0xB3FFFFFF),
-                  fontSize: 12, fontWeight: active ? FontWeight.w700 : FontWeight.w400)),
-                if (c > 0) ...[
-                  const SizedBox(width: 4),
-                  Text('$c', style: TextStyle(
-                    color: full ? const Color(0x55FFFFFF) : accentColor,
-                    fontSize: 10, fontWeight: FontWeight.w700)),
-                ],
-              ]),
-            ),
-          );
-        },
-      ),
-    )),
-  ]);
+              );
+            },
+          ),
+        )),
+      ]);
 }
 
 class _SampleProgress extends StatelessWidget {
@@ -917,8 +1231,10 @@ class _SampleProgress extends StatelessWidget {
   final Color color;
 
   const _SampleProgress({
-    required this.label, required this.count,
-    required this.target, required this.color,
+    required this.label,
+    required this.count,
+    required this.target,
+    required this.color,
   });
 
   @override
@@ -926,28 +1242,36 @@ class _SampleProgress extends StatelessWidget {
     final done = count >= target;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
-        Text('"$label"', style: const TextStyle(
-          color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+        Text('"$label"',
+            style: const TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w600)),
         const SizedBox(width: 6),
-        Text('$count / $target', style: const TextStyle(
-          color: Color(0x66FFFFFF), fontSize: 12)),
+        Text('$count / $target',
+            style: const TextStyle(color: Color(0x66FFFFFF), fontSize: 12)),
         if (done) ...[
           const SizedBox(width: 6),
           Text('✓', style: TextStyle(color: color, fontSize: 12)),
         ],
       ]),
       const SizedBox(height: 5),
-      LayoutBuilder(builder: (ctx, c) => Container(
-        height: 4, width: c.maxWidth,
-        decoration: BoxDecoration(color: const Color(0x1AFFFFFF),
-          borderRadius: BorderRadius.circular(2)),
-        child: FractionallySizedBox(
-          alignment: Alignment.centerLeft,
-          widthFactor: (count / target).clamp(0.0, 1.0),
-          child: Container(decoration: BoxDecoration(
-            color: color, borderRadius: BorderRadius.circular(2))),
-        ),
-      )),
+      LayoutBuilder(
+          builder: (ctx, c) => Container(
+                height: 4,
+                width: c.maxWidth,
+                decoration: BoxDecoration(
+                    color: const Color(0x1AFFFFFF),
+                    borderRadius: BorderRadius.circular(2)),
+                child: FractionallySizedBox(
+                  alignment: Alignment.centerLeft,
+                  widthFactor: (count / target).clamp(0.0, 1.0),
+                  child: Container(
+                      decoration: BoxDecoration(
+                          color: color,
+                          borderRadius: BorderRadius.circular(2))),
+                ),
+              )),
     ]);
   }
 }
@@ -961,9 +1285,12 @@ class _BigBtn extends StatelessWidget {
   final VoidCallback? onTap;
 
   const _BigBtn({
-    required this.label, required this.icon,
-    required this.accent, required this.color,
-    required this.enabled, required this.onTap,
+    required this.label,
+    required this.icon,
+    required this.accent,
+    required this.color,
+    required this.enabled,
+    required this.onTap,
   });
 
   @override
@@ -975,19 +1302,38 @@ class _BigBtn extends StatelessWidget {
         duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(vertical: 11),
         decoration: BoxDecoration(
-          color: accent ? color.withValues(alpha: 0.27) : active ? const Color(0x18FFFFFF) : const Color(0x0AFFFFFF),
+          color: accent
+              ? color.withValues(alpha: 0.27)
+              : active
+                  ? const Color(0x18FFFFFF)
+                  : const Color(0x0AFFFFFF),
           border: Border.all(
-            color: accent ? color.withValues(alpha: 0.5) : active ? const Color(0x33FFFFFF) : const Color(0x1AFFFFFF),
-            width: accent ? 1 : 0.5),
+              color: accent
+                  ? color.withValues(alpha: 0.5)
+                  : active
+                      ? const Color(0x33FFFFFF)
+                      : const Color(0x1AFFFFFF),
+              width: accent ? 1 : 0.5),
           borderRadius: BorderRadius.circular(10),
         ),
         child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Icon(icon, size: 16,
-            color: accent ? color : active ? const Color(0xB3FFFFFF) : const Color(0x44FFFFFF)),
+          Icon(icon,
+              size: 16,
+              color: accent
+                  ? color
+                  : active
+                      ? const Color(0xB3FFFFFF)
+                      : const Color(0x44FFFFFF)),
           const SizedBox(width: 6),
-          Text(label, style: TextStyle(
-            color: accent ? color : active ? const Color(0xB3FFFFFF) : const Color(0x44FFFFFF),
-            fontSize: 13, fontWeight: FontWeight.w600)),
+          Text(label,
+              style: TextStyle(
+                  color: accent
+                      ? color
+                      : active
+                          ? const Color(0xB3FFFFFF)
+                          : const Color(0x44FFFFFF),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600)),
         ]),
       ),
     );
@@ -1001,27 +1347,32 @@ class _SequenceRing extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    width: 120, height: 120,
-    decoration: BoxDecoration(
-      shape: BoxShape.circle,
-      color: const Color(0xCC0A0E1A),
-      border: Border.all(color: kOrange.withValues(alpha: 0.3), width: 2),
-    ),
-    child: Stack(alignment: Alignment.center, children: [
-      SizedBox(width: 100, height: 100,
-        child: CircularProgressIndicator(
-          value: progress, color: kOrange,
-          backgroundColor: kOrange.withValues(alpha: 0.15),
-          strokeWidth: 6,
-        )),
-      Column(mainAxisSize: MainAxisSize.min, children: [
-        Text('$framesLeft', style: const TextStyle(
-          color: kOrange, fontSize: 28, fontWeight: FontWeight.w800)),
-        const Text('frames', style: TextStyle(
-          color: Color(0x88FFFFFF), fontSize: 11)),
-      ]),
-    ]),
-  );
+        width: 120,
+        height: 120,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: const Color(0xCC0A0E1A),
+          border: Border.all(color: kOrange.withValues(alpha: 0.3), width: 2),
+        ),
+        child: Stack(alignment: Alignment.center, children: [
+          SizedBox(
+              width: 100,
+              height: 100,
+              child: CircularProgressIndicator(
+                value: progress,
+                color: kOrange,
+                backgroundColor: kOrange.withValues(alpha: 0.15),
+                strokeWidth: 6,
+              )),
+          Column(mainAxisSize: MainAxisSize.min, children: [
+            Text('$framesLeft',
+                style: const TextStyle(
+                    color: kOrange, fontSize: 28, fontWeight: FontWeight.w800)),
+            const Text('frames',
+                style: TextStyle(color: Color(0x88FFFFFF), fontSize: 11)),
+          ]),
+        ]),
+      );
 }
 
 class _PulsingDot extends StatefulWidget {
@@ -1040,19 +1391,26 @@ class _PulsingDotState extends State<_PulsingDot>
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 800))
+    _ctrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 800))
       ..repeat(reverse: true);
     _anim = Tween<double>(begin: 0.4, end: 1.0)
-      .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
+        .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
   }
 
   @override
-  void dispose() { _ctrl.dispose(); super.dispose(); }
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) => FadeTransition(
-    opacity: _anim,
-    child: Container(width: 10, height: 10,
-      decoration: BoxDecoration(color: widget.color, shape: BoxShape.circle)),
-  );
+        opacity: _anim,
+        child: Container(
+            width: 10,
+            height: 10,
+            decoration:
+                BoxDecoration(color: widget.color, shape: BoxShape.circle)),
+      );
 }

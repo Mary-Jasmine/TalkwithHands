@@ -234,7 +234,7 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
     if (_gameOver) return;
     final number = int.tryParse(_cameraAnswer);
     if (number == null) {
-      _showMessage('Capture your sign first.');
+      _showMessage('Record your sign first.');
       return;
     }
     if (number == _roundAnswer) {
@@ -340,7 +340,7 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
     try {
       if (_isCalculatorNumber(input)) {
         setState(() => _cameraAnswer = input);
-        _showMessage('Captured $input. Press Submit to check it.');
+        _showMessage('Record $input. Press Submit to check it.');
       } else {
         _showMessage('Sign a number from 0 to 20.');
       }
@@ -1199,7 +1199,7 @@ class _CalculatorGamePageState extends State<CalculatorGamePage>
               Expanded(
                   child: _GameActionButton(
                 icon: Icons.camera_alt_rounded,
-                label: _cameraReady ? 'Capture Sign' : 'Camera',
+                label: _cameraReady ? 'Record Sign' : 'Camera',
                 color: const Color(0xFF1268EA),
                 onTap: _cameraReady ? _captureFrame : _startCamera,
               )),

@@ -32,10 +32,19 @@ class VideoPlayerService {
     required String videoAsset,
   }) {
     final sources = <PlayableVideoSource>[];
+    final panoramaAsset =
+        videoAsset.trim().toLowerCase().startsWith('assets/180_videos/');
     final proxyUrl = backendProxyVideoUrl(videoUrl);
     final backendAssetUrl = backendVideoUrl(videoAsset);
     final directUrl = normalizePlayableVideoUrl(videoUrl);
+    final originalUrl = videoUrl.trim();
 
+    // Panorama clips are bundled in the app, so use the local copy first.
+    // The backend asset path remains a fallback for environments that do not
+    // package the Flutter asset bundle.
+    if (panoramaAsset && isBundledVideoAsset(videoAsset)) {
+      sources.add(PlayableVideoSource.asset('bundled 180 video', videoAsset));
+    }
     if (proxyUrl != null) {
       sources.add(PlayableVideoSource.network('cached backend video', proxyUrl));
     }
@@ -44,13 +53,21 @@ class VideoPlayerService {
         backendAssetUrl != directUrl) {
       sources.add(PlayableVideoSource.network('backend asset', backendAssetUrl));
     }
-    if (isBundledVideoAsset(videoAsset)) {
+    if (!panoramaAsset && isBundledVideoAsset(videoAsset)) {
       sources.add(PlayableVideoSource.asset('bundled asset', videoAsset));
     }
     if (directUrl.isNotEmpty &&
         directUrl != proxyUrl &&
         directUrl != backendAssetUrl) {
       sources.add(PlayableVideoSource.network('direct video URL', directUrl));
+    }
+    if (originalUrl.isNotEmpty &&
+        originalUrl != directUrl &&
+        originalUrl != proxyUrl &&
+        originalUrl != backendAssetUrl) {
+      sources.add(
+        PlayableVideoSource.network('original video URL', originalUrl),
+      );
     }
 
     return sources;

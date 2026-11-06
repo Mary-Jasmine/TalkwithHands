@@ -19,27 +19,28 @@ import 'tutorial_video_screen.dart';
 const kVividBlue = Color(0xFF1500C8);
 const kAccent = Color(0xFF11B7CB);
 const kGreen = Color(0xFF34C759);
+const kActionGreen = Color(0xFF218E3D);
 
 const Set<String> _excludedBasicWordCategories = {
   'alphabet',
   'alphabets',
   'number',
   'numbers',
+  'emotions',
 };
 
 // ── Sign language sets ──────────────────────────────────────────────────────
 // Categories shown when the user switches the toggle to "FSL Signs".
 const Map<String, IconData> _categoryIcons = {
-  'Animal': Icons.pets_rounded,
-  'Color': Icons.palette_outlined,
+  'Animals': Icons.pets_rounded,
+  'Colors': Icons.palette_outlined,
   'Days of the week': Icons.calendar_view_week_outlined,
   'Direction and Location': Icons.explore_outlined,
   'Emotion': Icons.sentiment_satisfied_alt_outlined,
-  'Emotions': Icons.sentiment_satisfied_alt_outlined,
   'Environment': Icons.park_outlined,
   'Family': Icons.family_restroom_rounded,
   'Feelings': Icons.favorite_border_rounded,
-  'Food': Icons.restaurant_outlined,
+  'Foods': Icons.restaurant_outlined,
   'Food Taste': Icons.local_dining_outlined,
   'Fruits': Icons.apple_outlined,
   'Greetings': Icons.waving_hand_outlined,
@@ -56,20 +57,38 @@ const Map<String, IconData> _categoryIcons = {
   'Religion and Values': Icons.auto_awesome_outlined,
   'Responses and Reactions': Icons.thumbs_up_down_outlined,
   'School': Icons.school_outlined,
-  'School Supply': Icons.backpack_outlined,
-  'Shape': Icons.category_outlined,
+  'School Supplies': Icons.backpack_outlined,
+  'Shapes': Icons.category_outlined,
   'Technology and Communication': Icons.devices_outlined,
   'Temperature': Icons.thermostat_rounded,
   'Time': Icons.schedule_outlined,
-  'Transportation': Icons.directions_car_outlined,
+  'Transportations': Icons.directions_car_outlined,
 };
+
+const Map<String, String> _categoryDisplayNames = {
+  'animal': 'Animals',
+  'color': 'Colors',
+  'school supply': 'School Supplies',
+  'shape': 'Shapes',
+  'transportation': 'Transportations',
+};
+
+String _displayCategoryName(String category) =>
+    _categoryDisplayNames[category.trim().toLowerCase()] ?? category;
+
+IconData _iconForCategory(String category) =>
+    _categoryIcons[_displayCategoryName(category)] ??
+    _categoryIcons[category] ??
+    Icons.category_outlined;
 
 class BasicWordsScreen extends StatefulWidget {
   final String userName;
+  final String? initialCategory;
 
   const BasicWordsScreen({
     super.key,
     required this.userName,
+    this.initialCategory,
   });
 
   @override
@@ -82,6 +101,7 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
   final _searchFocusNode = FocusNode();
   late Future<List<BasicWord>> _wordFuture;
   String _query = '';
+  bool _searchMode = false;
 
   // null = show category landing grid; non-null = show word list for that category
   String? _selectedCategory;
@@ -98,7 +118,9 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
   @override
   void initState() {
     super.initState();
+    _selectedCategory = widget.initialCategory;
     _wordFuture = BasicWordService().listBasicWords();
+    _searchFocusNode.addListener(_onSearchFocusChanged);
     _searchController.addListener(() {
       final q = _searchController.text.trim().toLowerCase();
       setState(() {
@@ -107,9 +129,17 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
     });
   }
 
+  void _onSearchFocusChanged() {
+    if (!mounted) return;
+    setState(() {
+      if (_searchFocusNode.hasFocus) _searchMode = true;
+    });
+  }
+
   @override
   void dispose() {
     _searchController.dispose();
+    _searchFocusNode.removeListener(_onSearchFocusChanged);
     _searchFocusNode.dispose();
     super.dispose();
   }
@@ -185,34 +215,66 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
   void _clearSearch() {
     _searchController.clear();
     _searchFocusNode.unfocus();
-    setState(() => _query = '');
+    setState(() {
+      _query = '';
+      _searchMode = false;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       key: _scaffoldKey,
-      endDrawer: AppMenuDrawer(
+      resizeToAvoidBottomInset: false,
+      drawer: AppMenuDrawer(
         userName: widget.userName,
         onClose: () => Navigator.of(context).pop(),
         activeScreen: 'Basic Words',
       ),
       body: BackgroundMusicRegion(
         track: BackgroundMusicTrack.page,
-        child: AppBackground(
+        child: ClassroomPageBackground(
+          bannerAsset: 'assets/images/bas.png',
+          boardTopFraction:
+              _selectedCategory != null ? 0.24 : 0.37,
+          landscapeBoardTopFraction: 0.34,
         child: Stack(
           children: [
-            const Positioned.fill(
-              child: IgnorePointer(
-                child: _FloatingBubbles(),
-              ),
-            ),
             SafeArea(
-          child: FutureBuilder<List<BasicWord>>(
+              child: LayoutBuilder(
+                builder: (context, pageConstraints) {
+                  final safeInsets = MediaQuery.viewPaddingOf(context);
+                  final pageHeight = pageConstraints.maxHeight +
+                      safeInsets.top + safeInsets.bottom;
+                  return FutureBuilder<List<BasicWord>>(
             future: _wordFuture,
             builder: (context, snapshot) {
               final words = snapshot.data ?? [];
               final categories = _categories(words);
+              final isSearching = _query.isNotEmpty ||
+                  _searchMode ||
+                  _searchFocusNode.hasFocus;
+              final showAvatarRow = _selectedCategory == null &&
+                  (isSearching || _query.isEmpty);
+              final listAnchorFraction = _selectedCategory != null
+                  ? 0.28
+                  : 0.37;
+              final preferredAvatarRowHeight = pageHeight < 500 ? 82.0 : 128.0;
+              final headerHeight =
+                  (MediaQuery.sizeOf(context).shortestSide < 360 ? 82.0 : 67.0) +
+                      4 +
+                      math.max(44.0, pageHeight * 0.055) +
+                      6;
+              final boardLocalTop =
+                  pageHeight * listAnchorFraction - safeInsets.top;
+              // Keep the avatar at its regular page position and size while
+              // searching; keyboard visibility should not pull it upward.
+              final avatarOverflow = isSearching && pageHeight >= 500
+                  ? 22.0
+                  : isSearching
+                      ? 0.0
+                      : 22.0;
+              final avatarRowHeight = preferredAvatarRowHeight;
               final isLoading =
                   snapshot.connectionState == ConnectionState.waiting;
               final hasError = snapshot.hasError;
@@ -220,32 +282,25 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
               return Column(
                 children: [
                   AppTopBar(
-                    onBack: _selectedCategory != null
-                        ? () => setState(() => _selectedCategory = null)
-                        : () => Navigator.of(context).pop(),
-                    onMenu: () => _scaffoldKey.currentState?.openEndDrawer(),
+                    onBack: _selectedCategory == null
+                        ? null
+                        : () => Navigator.of(context).maybePop(),
+                    onMenu: () => _scaffoldKey.currentState?.openDrawer(),
+                    menuOnLeft: _selectedCategory == null,
                   ),
-                  const Padding(
-                    padding: EdgeInsets.only(top: 2, bottom: 14),
-                    child: Text(
-                      'BASIC WORDS',
-                      style: TextStyle(
-                        color: Color(0xFF1500C8),
-                        fontSize: 38,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0,
-                      ),
-                    ),
-                  ),
+                  const SizedBox(height: 4),
 
                   // ── Search bar ────────────────────────────────────────────
-                  SizedBox(
-                    height: math.max(
-                      44.0,
-                      MediaQuery.sizeOf(context).height * 0.055,
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 25),
+                  Transform.translate(
+                    offset: const Offset(0, 18),
+                    child: SizedBox(
+                      height: math.max(
+                        44.0,
+                        MediaQuery.sizeOf(context).height * 0.055,
+                      ),
+                      child: Padding(
+                      padding: EdgeInsets.symmetric(
+                          horizontal: MediaQuery.sizeOf(context).width * 0.10),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
@@ -255,16 +310,14 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
                                 color: Colors.white,
                                 borderRadius: BorderRadius.circular(32),
                                 border: Border.all(
-                                  color: _query.isNotEmpty
-                                      ? kVividBlue
-                                      : const Color(0xFFCCCCCC),
-                                  width: 1.8,
+                                  color: kVividBlue,
+                                  width: 2.2,
                                 ),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: Colors.black.withValues(alpha: 0.08),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 2),
+                                    color: Colors.black.withValues(alpha: 0.22),
+                                    blurRadius: 11,
+                                    offset: const Offset(0, 3),
                                   ),
                                 ],
                               ),
@@ -300,15 +353,15 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
                                       ),
                                     ),
                                   ),
-                                  if (_query.isNotEmpty)
+                                  if (_query.isNotEmpty || _searchMode)
                                     GestureDetector(
                                       onTap: _clearSearch,
                                       child: const Padding(
-                                        padding: EdgeInsets.only(right: 18),
+                                        padding: EdgeInsets.only(right: 10),
                                         child: Icon(
                                           Icons.close_rounded,
                                           color: Color(0xFF9DA4AD),
-                                          size: 40,
+                                          size: 16,
                                         ),
                                       ),
                                     ),
@@ -348,15 +401,22 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 8),
                                   alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(32),
+                                    border: Border.all(
+                                        color: Colors.white, width: 2),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withValues(
+                                            alpha: 0.30),
+                                        blurRadius: 10,
+                                        offset: const Offset(0, 3),
+                                      ),
+                                    ],
+                                  ),
                                   child: const Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Icon(
-                                        Icons.play_circle_fill_rounded,
-                                        color: Colors.white,
-                                        size: 16,
-                                      ),
-                                      SizedBox(width: 4),
                                       Flexible(
                                         child: Text(
                                           'Practice',
@@ -364,7 +424,7 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
                                           overflow: TextOverflow.ellipsis,
                                           style: TextStyle(
                                             color: Colors.white,
-                                            fontSize: 13,
+                                            fontSize: 15,
                                             fontWeight: FontWeight.w600,
                                           ),
                                         ),
@@ -377,23 +437,84 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
                           ),
                         ],
                       ),
+                      ),
                     ),
                   ),
 
-                  const SizedBox(height: 14), // lowers Basic.mp4 a bit
-                  const SizedBox(
-                    height: 120,
-                    width: 240,
-                    child: TransparentSignVideoOverlay(
-                      videoAsset: 'assets/Basic.mp4',
-                      fit: BoxFit.contain,
-                      volume: 0,
-                      threshold: 0.34,
-                      smoothing: 0.08,
+                  if (showAvatarRow) ...[
+                    const SizedBox(height: 10),
+                    SizedBox(
+                    height: avatarRowHeight,
+                    width: double.infinity,
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      alignment: Alignment.center,
+                      children: [
+                        if (!isSearching)
+                          Positioned(
+                          left: -(MediaQuery.sizeOf(context).height < 500
+                                  ? 80.0
+                                  : 118.0) *
+                              0.25,
+                          bottom: -25,
+                          child: ClassroomBookshelf(
+                            width: MediaQuery.sizeOf(context).height < 500
+                                ? 80.0
+                                : 118.0,
+                          ),
+                        ),
+                        Transform.translate(
+                          offset: Offset(0, avatarOverflow),
+                          child: SizedBox(
+                            height: isSearching
+                                ? (pageHeight >= 500
+                                    ? avatarRowHeight + 30
+                                    : avatarRowHeight)
+                                : (pageHeight < 500 ? 104 : 172),
+                            width: math.min(
+                              280.0,
+                              MediaQuery.sizeOf(context).width * 0.8,
+                            ),
+                            child: const TransparentSignVideoOverlay(
+                              videoAsset: 'assets/Basic.mp4',
+                              fit: BoxFit.contain,
+                              scale: 1.04,
+                              volume: 0,
+                              threshold: 0.34,
+                              smoothing: 0.08,
+                            ),
+                          ),
+                        ),
+                        if (!isSearching) ...[
+                          const Positioned(
+                            left: 20,
+                            child: Icon(Icons.star_rounded,
+                                color: Color(0xFFFFB800), size: 23),
+                          ),
+                          const Positioned(
+                            right: 20,
+                            child: Icon(Icons.auto_awesome_rounded,
+                                color: Color(0xFF11B7CB), size: 21),
+                          ),
+                        ],
+                      ],
                     ),
-                  ),
-
-                  const SizedBox(height: 2),
+                    ),
+                    SizedBox(
+                      height: math.max(
+                        0.0,
+                        isSearching
+                            ? boardLocalTop -
+                                headerHeight -
+                                10 -
+                                avatarRowHeight
+                            : pageHeight * 0.06,
+                      ),
+                    ),
+                  ] else
+                    SizedBox(
+                      height: math.max(0.0, boardLocalTop - headerHeight),
+                    ),
 
                   // ── Main content ──────────────────────────────────────────
                   Expanded(
@@ -421,7 +542,9 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
                 ],
               );
             },
-          ),
+                  );
+                },
+              ),
         ),
           ],
         ),
@@ -440,57 +563,116 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
       wordCount[w.category] = (wordCount[w.category] ?? 0) + 1;
     }
 
+    final size = MediaQuery.sizeOf(context);
     return GestureDetector(
-      onTap: () {
-        _searchFocusNode.unfocus();
-      },
+      onTap: _searchFocusNode.unfocus,
       behavior: HitTestBehavior.translucent,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Padding(
-              padding: EdgeInsets.only(bottom: 21, top: 7),
-              child: Text(
-                'Categories',
-                style: TextStyle(
-                  color: Colors.black87,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
+        padding: EdgeInsets.fromLTRB(
+          size.width * 0.06,
+          0,
+          size.width * 0.06,
+          size.height * 0.04,
+        ),
+        child: Container(
+          decoration: BoxDecoration(
+            color: const Color.fromARGB(255, 4, 51, 98).withValues(alpha: 0.18),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: const Color.fromARGB(255, 156, 156, 156)
+                  .withValues(alpha: 0.55),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: const Color.fromARGB(255, 186, 182, 182)
+                    .withValues(alpha: 0.08),
+                blurRadius: 18,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(14, 18, 14, 2),
+                child: Center(
+                  child: Text(
+                    'Categories',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 24 ,
+                      fontWeight: FontWeight.w900,
+                      shadows: [
+                        Shadow(
+                          color: Colors.black54,
+                          blurRadius: 5,
+                          offset: Offset(1, 2),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
-            ),
-            Expanded(
-              child: GridView.builder(
-                physics: const BouncingScrollPhysics(),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 4,
-                  crossAxisSpacing: 10,
-                  mainAxisSpacing: 10,
-                  childAspectRatio: 0.72,
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final columns = constraints.maxWidth >= 700
+                        ? 4
+                        : constraints.maxWidth >= 460
+                            ? 3
+                            : 2;
+                    final tileWidth = (constraints.maxWidth - 44 -
+                            10 * (columns - 1)) /
+                        columns;
+                    // Keep the same card size while the keyboard is open and
+                    // fit about two and a quarter rows in the fixed panel.
+                    final tileHeight =
+                        (constraints.maxHeight - 24 - 20) / 2.25;
+                    return GridView.builder(
+                      physics: const BouncingScrollPhysics(),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 22,
+                        vertical: 12,
+                      ),
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: columns,
+                        crossAxisSpacing: 10,
+                        mainAxisSpacing: 10,
+                        childAspectRatio: tileWidth / tileHeight,
+                      ),
+                      itemCount: categories.length,
+                      itemBuilder: (context, i) {
+                        final cat = categories[i];
+                        final icon =
+                            _categoryIcons[cat] ?? Icons.category_outlined;
+                        final count = wordCount[cat] ?? 0;
+                        return _CategoryTile(
+                          label: cat,
+                          icon: icon,
+                          count: count,
+                          onTap: () {
+                            _searchFocusNode.unfocus();
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => BasicWordsScreen(
+                                  userName: widget.userName,
+                                  initialCategory: cat,
+                                ),
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    );
+                  },
                 ),
-                itemCount: categories.length,
-                itemBuilder: (context, i) {
-                  final cat = categories[i];
-                  final icon =
-                      _categoryIcons[cat] ?? Icons.category_outlined;
-                  final count = wordCount[cat] ?? 0;
-                  return _CategoryTile(
-                    label: cat,
-                    icon: icon,
-                    count: count,
-                    onTap: () {
-                      _searchFocusNode.unfocus();
-                      setState(() {
-                        _selectedCategory = cat;
-                      });
-                    },
-                  );
-                },
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -498,42 +680,65 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
 
   // ── Word list for a selected category ──────────────────────────────────────
   Widget _buildWordList(List<BasicWord> words, String category) {
+    final screenHeight = MediaQuery.sizeOf(context).height;
+    final wordCardHeight = ((screenHeight * (1 - 0.28 - 0.03) - 112) / 2.5)
+        .clamp(96.0, 180.0)
+        .toDouble();
     return Padding(
-      padding: const EdgeInsets.fromLTRB(13, 14, 15, 10),
+      padding: EdgeInsets.fromLTRB(
+        MediaQuery.sizeOf(context).width * 0.08,
+        0,
+        MediaQuery.sizeOf(context).width * 0.08,
+        MediaQuery.sizeOf(context).height * 0.04,
+      ),
       child: Container(
         width: double.infinity,
         decoration: BoxDecoration(
-          color: const Color.fromARGB(181, 88, 170, 248).withValues(alpha: 0.18),
+          color: const Color.fromARGB(255, 4, 51, 98).withValues(alpha: 0.18),
           borderRadius: BorderRadius.circular(24),
           border: Border.all(
             color:
                 const Color.fromARGB(255, 156, 156, 156).withValues(alpha: 0.55),
             width: 1.5,
           ),
+          boxShadow: [
+            BoxShadow(
+              color: const Color.fromARGB(255, 186, 182, 182)
+                  .withValues(alpha: 0.08),
+              blurRadius: 18,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
         clipBehavior: Clip.antiAlias,
         child: RefreshIndicator(
           onRefresh: () async => _reload(),
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(12, 16, 12, 24),
+            padding: const EdgeInsets.fromLTRB(8, 16, 8, 36),
             children: [
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(
-                    _categoryIcons[category] ?? Icons.category_outlined,
-                    color: const Color.fromARGB(255, 14, 0, 137),
+                    _iconForCategory(category),
+                    color: Colors.white,
                     size: 22,
                   ),
                   const SizedBox(width: 10),
                   Text(
-                    category,
+                    _displayCategoryName(category),
                     style: const TextStyle(
-                      color: Colors.black87,
+                      color: Colors.white,
                       fontSize: 22,
                       fontWeight: FontWeight.w900,
-                      
+                      shadows: [
+                        Shadow(
+                          color: Colors.black54,
+                          blurRadius: 5,
+                          offset: Offset(1, 2),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -555,7 +760,7 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
                       children: words
                           .map((word) => SizedBox(
                                 width: itemWidth,
-                                height: 160,
+                                height: wordCardHeight,
                                 child: _BasicWordCard(
                                   word: word,
                                   showCategory: false,
@@ -589,9 +794,15 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
     for (final c in byCategory.keys) {
       if (!orderedCats.contains(c)) orderedCats.add(c);
     }
+    final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(13, 14, 15, 10),
+      padding: EdgeInsets.fromLTRB(
+        MediaQuery.sizeOf(context).width * 0.12,
+        keyboardOpen ? 0 : 14,
+        MediaQuery.sizeOf(context).width * 0.12,
+        keyboardOpen ? 0 : MediaQuery.sizeOf(context).height * 0.025,
+      ),
       child: Container(
         width: double.infinity,
         decoration: BoxDecoration(
@@ -606,32 +817,40 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
         clipBehavior: Clip.antiAlias,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(12, 16, 12, 24),
+          padding: keyboardOpen
+              ? EdgeInsets.zero
+              : const EdgeInsets.fromLTRB(12, 16, 12, 24),
           children: [
             for (final cat in orderedCats) ...[
-              Row(
-                children: [
-                  Icon(
-                    _categoryIcons[cat] ?? Icons.category_outlined,
-                    color: const Color.fromARGB(255, 14, 0, 137),
-                    size: 18,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    cat,
-                    style: const TextStyle(
-                      color: Colors.black87,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w900,
+              if (!keyboardOpen) ...[
+                Row(
+                  children: [
+                    Icon(
+                      _categoryIcons[cat] ?? Icons.category_outlined,
+                      color: const Color.fromARGB(255, 14, 0, 137),
+                      size: 18,
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
+                    const SizedBox(width: 8),
+                    Text(
+                      cat,
+                      style: const TextStyle(
+                        color: Colors.black87,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+              ],
               LayoutBuilder(
                 builder: (context, constraints) {
                   const spacing = 9.0;
-                  const columns = 3;
+                  final columns = constraints.maxWidth >= 700
+                      ? 4
+                      : constraints.maxWidth >= 420
+                          ? 3
+                          : 2;
                   final itemWidth =
                       (constraints.maxWidth - spacing * (columns - 1)) /
                           columns;
@@ -641,10 +860,13 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
                     children: byCategory[cat]!
                         .map((word) => SizedBox(
                               width: itemWidth,
-                              height: 160,
+                              height: 180,
                               child: _BasicWordCard(
                                 word: word,
-                                showCategory: false,
+                                // Category headings are hidden while the
+                                // keyboard is open to save space, so keep the
+                                // category label on each result card instead.
+                                showCategory: keyboardOpen,
                                 onView: () => _showWordDetails(context, word),
                                 onWatch: () => _openVideo(word),
                               ),
@@ -653,7 +875,7 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
                   );
                 },
               ),
-              const SizedBox(height: 20),
+              SizedBox(height: keyboardOpen ? 8 : 20),
             ],
           ],
         ),
@@ -675,7 +897,7 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: kAccent, width: 2),
+                  border: Border.all(color: const Color(0xFFBFD7FF), width: 2),
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: Column(
@@ -712,7 +934,13 @@ class _BasicWordsScreenState extends State<BasicWordsScreen> {
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(vertical: 14),
-                      color: const Color(0xFF11B7CB),
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [Color(0xFF185FA5), Color(0xFF0B8FFF)],
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                        ),
+                      ),
                       child: Center(
                         child: _TutorialButton(
                           label: 'VIDEO TUTORIAL',
@@ -769,54 +997,84 @@ class _CategoryTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFFBBDDBB), width: 1.4),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x14000000),
-              blurRadius: 6,
-              offset: Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: const Color(0xFFE8F5E9),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                    color: const Color(0xFF4CAF50).withValues(alpha: 0.4),
-                    width: 1.2),
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFF72C989), width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF12365A).withValues(alpha: 0.28),
+                blurRadius: 9,
+                offset: const Offset(0, 4),
               ),
-              child: Icon(icon, size: 24, color: const Color(0xFF2E7D32)),
-            ),
-            const SizedBox(height: 6),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: Text(
-                label,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Color(0xFF2E7D32),
-                  fontSize: 9,
-                  fontWeight: FontWeight.w700,
-                  height: 1.15,
-                ),
+            ],
+          ),
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(3, 3, 3, 4),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFD5F0DD),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: const Color(0xFF218E3D),
+                        width: 2,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color:
+                              const Color(0xFF176B42).withValues(alpha: 0.20),
+                          blurRadius: 6,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: Icon(
+                      icon,
+                      size: 30,
+                      color: const Color(0xFF14532D),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    label,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Color(0xFF14532D),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      height: 1.12,
+                    ),
+                  ),
+                  const SizedBox(height: 1),
+                  Text(
+                    '$count words',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Color(0xFF4B6654),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -842,25 +1100,19 @@ class _BasicWordCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: Colors.transparent,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(9),
       child: InkWell(
         onTap: onView,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(9),
         child: Container(
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFBFD7FF), width: 1.5),
-            boxShadow: const [
+            borderRadius: BorderRadius.circular(9),
+            boxShadow: [
               BoxShadow(
-                color: Color(0x30185FA5),
-                blurRadius: 12,
-                offset: Offset(0, 6),
-              ),
-              BoxShadow(
-                color: Color(0x15000000),
-                blurRadius: 4,
-                offset: Offset(0, 2),
+                color: Colors.black.withValues(alpha: 0.19),
+                blurRadius: 6,
+                offset: const Offset(4, 3),
               ),
             ],
           ),
@@ -870,21 +1122,21 @@ class _BasicWordCard extends StatelessWidget {
               Expanded(
                 child: Container(
                   width: double.infinity,
-                  color: const Color(0xFFEFF6FF),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFDF9F9),
+                    border: Border.all(
+                      color: const Color(0xFFD6D6D6),
+                      width: 1.2,
+                    ),
+                  ),
+                  padding: const EdgeInsets.all(1),
                   child: _WordThumbnail(word: word),
                 ),
               ),
               Container(
                 width: double.infinity,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Color(0xFF185FA5), Color(0xFF0B8FFF)],
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                  ),
-                ),
+                padding: const EdgeInsets.fromLTRB(8, 3, 8, 3),
+                color: const Color.fromARGB(255, 0, 60, 191),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
@@ -903,20 +1155,19 @@ class _BasicWordCard extends StatelessWidget {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(
-                              _categoryIcons[word.category] ??
-                                  Icons.category_outlined,
+                              _iconForCategory(word.category),
                               color: Colors.white,
                               size: 9,
                             ),
                             const SizedBox(width: 3),
                             Flexible(
                               child: Text(
-                                word.category,
+                                _displayCategoryName(word.category),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
                                   color: Colors.white,
-                                  fontSize: 9,
+                                  fontSize: 10,
                                   fontWeight: FontWeight.w700,
                                   letterSpacing: 0.1,
                                 ),
@@ -934,22 +1185,20 @@ class _BasicWordCard extends StatelessWidget {
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 13,
+                        fontSize: 16,
                         fontWeight: FontWeight.w900,
                         letterSpacing: 0.2,
                       ),
                     ),
-                    const SizedBox(height: 5),
+                    const SizedBox(height: 1),
                     Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: _TinyAction(
-                            label: 'Watch',
-                            icon: Icons.play_circle_outline_rounded,
-                            onTap: onWatch,
-                            color: const Color(0xFF1E8C3A),
-                          ),
+                        _TinyAction(
+                          label: 'Watch',
+                          icon: Icons.play_circle_outline_rounded,
+                          onTap: onWatch,
+                          color: kActionGreen,
                         ),
                       ],
                     ),
@@ -986,17 +1235,26 @@ class _TinyAction extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(999),
         child: Container(
-          height: 22,
+          width: 66,
+          height: 32,
+          padding: const EdgeInsets.symmetric(horizontal: 2),
           alignment: Alignment.center,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: Colors.white, width: 1),
+            border: Border.all(color: Colors.white, width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.24),
+                blurRadius: 7,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, color: Colors.white, size: 11),
+              Icon(icon, color: Colors.white, size: 12),
               const SizedBox(width: 3),
               Text(
                 label,
@@ -1004,8 +1262,8 @@ class _TinyAction extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w900,
                 ),
               ),
             ],
@@ -1093,7 +1351,7 @@ class _TutorialButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: const Color(0xFFF2A8E8),
+      color: kActionGreen,
       borderRadius: BorderRadius.circular(999),
       child: InkWell(
         onTap: onTap,
@@ -1104,12 +1362,12 @@ class _TutorialButton extends StatelessWidget {
           alignment: Alignment.center,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: const Color(0xFF72326E), width: 2),
+            border: Border.all(color: Colors.white, width: 2),
           ),
           child: Text(
             label,
             style: const TextStyle(
-              color: Colors.black,
+              color: Colors.white,
               fontSize: 13,
               fontWeight: FontWeight.w900,
             ),

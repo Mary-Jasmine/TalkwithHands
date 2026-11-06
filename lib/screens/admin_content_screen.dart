@@ -233,7 +233,7 @@ class _AdminContentScreenState extends State<AdminContentScreen> {
 
     return Scaffold(
       key: _scaffoldKey,
-      endDrawer: AppMenuDrawer(
+      drawer: AppMenuDrawer(
         userName: widget.userName,
         activeScreen: _tab.title,
         onClose: () => Navigator.of(context).pop(),
@@ -244,7 +244,7 @@ class _AdminContentScreenState extends State<AdminContentScreen> {
             children: [
               AppTopBar(
                 onBack: () => Navigator.of(context).pop(),
-                onMenu: () => _scaffoldKey.currentState?.openEndDrawer(),
+                onMenu: () => _scaffoldKey.currentState?.openDrawer(),
               ),
               LayoutBuilder(
                 builder: (context, constraints) => Text(

@@ -98,12 +98,18 @@ class _MusicToggleButtonState extends State<MusicToggleButton> {
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: BackgroundMusicService.instance,
+      animation: Listenable.merge([
+        BackgroundMusicService.instance,
+        SignVoiceMuteControl.instance,
+      ]),
       builder: (context, _) {
         final service = BackgroundMusicService.instance;
+        final voice = SignVoiceMuteControl.instance;
         return Semantics(
           button: true,
-          label: service.muted ? 'Play music' : 'Mute music',
+          label: voice.active
+              ? (voice.muted ? 'Unmute voice' : 'Mute voice')
+              : (service.muted ? 'Play music' : 'Mute music'),
           child: Material(
             color: Colors.white.withValues(alpha: 0.88),
             shape: const CircleBorder(),
@@ -111,12 +117,12 @@ class _MusicToggleButtonState extends State<MusicToggleButton> {
             shadowColor: Colors.black26,
             child: InkWell(
               customBorder: const CircleBorder(),
-              onTap: service.toggleMuted,
+              onTap: voice.active ? voice.toggleVoice : service.toggleMuted,
               child: SizedBox(
                 width: 44,
                 height: 44,
                 child: Icon(
-                  service.muted
+                  (voice.active ? voice.muted : service.muted)
                       ? Icons.volume_off_rounded
                       : Icons.volume_up_rounded,
                   color: kDeepBlue,
@@ -129,4 +135,35 @@ class _MusicToggleButtonState extends State<MusicToggleButton> {
       },
     );
   }
+}
+
+/// Lets the app-wide bottom speaker control toggle sign-result speech while
+/// the sign detector is the active route; elsewhere it controls background music.
+class SignVoiceMuteControl extends ChangeNotifier {
+  SignVoiceMuteControl._();
+
+  static final SignVoiceMuteControl instance = SignVoiceMuteControl._();
+
+  bool muted = false;
+  VoidCallback? _toggle;
+  bool get active => _toggle != null;
+
+  void attach({required bool initialMuted, required VoidCallback toggle}) {
+    muted = initialMuted;
+    _toggle = toggle;
+    notifyListeners();
+  }
+
+  void detach() {
+    _toggle = null;
+    notifyListeners();
+  }
+
+  void setMuted(bool value) {
+    if (muted == value) return;
+    muted = value;
+    notifyListeners();
+  }
+
+  void toggleVoice() => _toggle?.call();
 }

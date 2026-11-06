@@ -19,6 +19,7 @@ import 'tutorial_video_screen.dart';
 const kVividBlue = Color(0xFF1500C8);
 const kAccent = Color(0xFF11B7CB);
 const kGreen = Color(0xFF34C759);
+const kActionGreen = Color(0xFF218E3D);
 const kCardBlue = Color(0xFF2563EB); // card footer blue (matches mockup)
 
 class AlphabetsScreen extends StatefulWidget {
@@ -36,11 +37,13 @@ class AlphabetsScreen extends StatefulWidget {
 class _AlphabetsScreenState extends State<AlphabetsScreen> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   final _searchController = TextEditingController();
+  final _searchFocusNode = FocusNode();
 
   List<AlphabetSign> _allSigns = [];
   bool _isLoading = true;
   String? _loadError;
   String _query = '';
+  bool _searchMode = false;
 
   Future<void> _recordLearned(AlphabetSign sign) async {
     try {
@@ -57,9 +60,23 @@ class _AlphabetsScreenState extends State<AlphabetsScreen> {
   void initState() {
     super.initState();
     _loadSigns();
+    _searchFocusNode.addListener(_onSearchFocusChanged);
     _searchController.addListener(() {
       setState(() => _query = _searchController.text.trim().toLowerCase());
     });
+  }
+
+  void _onSearchFocusChanged() {
+    if (!mounted) return;
+    setState(() {
+      if (_searchFocusNode.hasFocus) _searchMode = true;
+    });
+  }
+
+  void _exitSearchMode() {
+    _searchController.clear();
+    _searchFocusNode.unfocus();
+    setState(() => _searchMode = false);
   }
 
   Future<void> _loadSigns() async {
@@ -84,6 +101,8 @@ class _AlphabetsScreenState extends State<AlphabetsScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _searchFocusNode.removeListener(_onSearchFocusChanged);
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
@@ -149,162 +168,228 @@ class _AlphabetsScreenState extends State<AlphabetsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       key: _scaffoldKey,
-      endDrawer: AppMenuDrawer(
+      resizeToAvoidBottomInset: false,
+      drawer: AppMenuDrawer(
         userName: widget.userName,
         onClose: () => Navigator.of(context).pop(),
         activeScreen: 'Alphabets',
       ),
       body: BackgroundMusicRegion(
         track: BackgroundMusicTrack.page,
-        child: AppBackground(
-        child: Stack(
-          children: [
-            const Positioned.fill(
-              child: IgnorePointer(
-                child: _FloatingBubbles(),
-              ),
-            ),
-            SafeArea(
-          child: Column(
-            children: [
-              // ── Top bar ──────────────────────────────────────────────────
-              AppTopBar(
-                onBack: () => Navigator.of(context).pop(),
-                onMenu: () => _scaffoldKey.currentState?.openEndDrawer(),
-              ),
+        child: ClassroomPageBackground(
+          bannerAsset: 'assets/images/alp.png',
+          // The alphabet board begins below the avatar, keeping its frame
+          // compact while leaving the avatar at its original size and place.
+          boardTopFraction: 0.402,
+          landscapeBoardTopFraction: 0.34,
+          child: SafeArea(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final mq = MediaQuery.of(context);
+                final landscape = constraints.maxWidth > constraints.maxHeight;
+                final compact = constraints.maxHeight < 620;
+                final isSearching =
+                    _query.isNotEmpty ||
+                    _searchMode ||
+                    _searchFocusNode.hasFocus;
+                final horizontalInset =
+                    math.max(20.0, constraints.maxWidth * 0.10).toDouble();
 
-              // ── Title ────────────────────────────────────────────────────
-              const Padding(
-                padding: EdgeInsets.only(top: 2, bottom: 10),
-                child: Text(
-                  'ALPHABETS',
-                  style: TextStyle(
-                    color: Color(0xFF1500C8),
-                    fontSize: 42,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 0, 
-                    shadows: [
-                      Shadow(
-                        color: Colors.white,
-                        offset: Offset(3, 4),
-                        blurRadius: 6,
+                Widget searchRow() => Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        horizontalInset,
+                        compact ? 16 : 22,
+                        horizontalInset,
+                        compact ? 8 : 14,
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: _SearchField(
+                              controller: _searchController,
+                              focusNode: _searchFocusNode,
+                              isSearchMode: isSearching,
+                              onExitSearch: _exitSearchMode,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          _PracticeButton(
+                            onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const SignDetectorScreen(
+                                  initialMode: DetectionMode.az,
+                                  lockMode: true,
+                                  captureKind: CaptureKind.image,
+                                  title: 'Alphabet Practice',
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+
+                Widget avatarRow(double avatarHeight) => SizedBox(
+                      height: avatarHeight,
+                      width: double.infinity,
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        alignment: Alignment.center,
+                        children: [
+                          Positioned(
+                            left: -(128.0 * 0.90 * 0.25),
+                            bottom: -12,
+                            child: ClassroomBookshelf(
+                              width: 128.0 * 0.90,
+                            ),
+                          ),
+                          const TransparentSignVideoOverlay(
+                            videoAsset: 'assets/Alpha.mp4',
+                            fit: BoxFit.contain,
+                            scale: 1.60,
+                            volume: 0,
+                            threshold: 0.34,
+                            smoothing: 0.08,
+                          ),
+                          const Positioned(
+                            left: 35,
+                            top: -25,
+                            child: _AlphabetSticker(
+                              letter: 'A',
+                              color: Color.fromARGB(226, 51, 240, 13),
+                              angle: -0.16,
+                              size: 32,
+                            ),
+                          ),
+                          const Positioned(
+                            right: 54,
+                            top: -40,
+                            child: _AlphabetSticker(
+                              letter: 'B',
+                              color: Color(0xFFFFA900),
+                              angle: 0.12,
+                              size: 30,
+                            ),
+                          ),
+                          const Positioned(
+                            right: 16,
+                            bottom: 2,
+                            child: _AlphabetSticker(
+                              letter: 'C',
+                              color: Color.fromARGB(255, 231, 168, 246),
+                              angle: -0.10,
+                              size: 32,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+
+                Widget panel() => Container(
+                      // Same look as the Progress panel.
+                      decoration: BoxDecoration(
+                        color: const Color.fromARGB(255, 4, 51, 98)
+                            .withValues(alpha: 0.18),
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(
+                          color: const Color.fromARGB(255, 156, 156, 156)
+                              .withValues(alpha: 0.55),
+                          width: 1.5,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color.fromARGB(255, 186, 182, 182)
+                                .withValues(alpha: 0.08),
+                            blurRadius: 18,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: _buildGrid(),
+                    );
+
+                // ── Landscape: original column layout ───────────────────
+                if (landscape) {
+                  final avatarHeight = constraints.maxHeight < 560
+                      ? 76.0
+                      : constraints.maxHeight < 720
+                          ? 108.0
+                          : 140.0;
+                  return Column(
+                    children: [
+                      AppTopBar(
+                        onMenu: () => _scaffoldKey.currentState?.openDrawer(),
+                        menuOnLeft: true,
+                      ),
+                      searchRow(),
+                      if (isSearching)
+                        SizedBox(height: constraints.maxHeight * 0.05)
+                      else ...[
+                        SizedBox(height: constraints.maxHeight * 0.03),
+                        avatarRow(avatarHeight),
+                        SizedBox(height: constraints.maxHeight * 0.05),
+                      ],
+                      Expanded(
+                        child: Padding(
+                          padding: EdgeInsets.fromLTRB(
+                            constraints.maxWidth * 0.10,
+                            0,
+                            constraints.maxWidth * 0.10,
+                            constraints.maxHeight * 0.075,
+                          ),
+                          child: panel(),
+                        ),
                       ),
                     ],
-                  ),
-                ),
-              ),
+                  );
+                }
 
-              Expanded(
-                child: Stack(
-                  fit: StackFit.expand,
+                // ── Portrait: avatar + shelf sit just above the board frame,
+                // and the list panel fills the green board (same as Progress).
+                final boardTop = 0.402;
+                final sh = mq.size.height;
+                final topInset = mq.padding.top;
+                final keyboardInset = mq.viewInsets.bottom;
+                final avatarHeight = (sh * 0.125).clamp(76.0, 140.0).toDouble();
+                // Lower the avatar row so the larger portrait ends near the
+                // board top, matching the reference composition.
+                final avatarTop = sh * 0.365 - topInset - avatarHeight;
+                final bottomInset = mq.padding.bottom;
+                final panelTop = sh * (boardTop + 0.009) - topInset;
+                final panelBottom = keyboardInset > 0
+                    ? keyboardInset
+                    : math.max(0.0, sh * 0.03 - bottomInset);
+                return Stack(
                   children: [
                     Column(
                       children: [
-                        // ── Search + Practice row ──────────────────────────
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 24),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: _SearchField(
-                                  controller: _searchController,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              _PracticeButton(
-                                onTap: () => Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (_) => const SignDetectorScreen(
-                                      initialMode: DetectionMode.az,
-                                      lockMode: true,
-                                      captureKind: CaptureKind.image,
-                                      title: 'Alphabet Practice',
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
+                        AppTopBar(
+                          onMenu: () => _scaffoldKey.currentState?.openDrawer(),
+                          menuOnLeft: true,
                         ),
-                        const SizedBox(height: 10),
-
-                        // ── Character illustration banner ──────────────────
-                        SizedBox(
-                          height: 150,
-                          width: double.infinity,
-                          child: Stack(
-                            alignment: Alignment.center,
-                            children: [
-                              const TransparentSignVideoOverlay(
-                                videoAsset: 'assets/Alpha.mp4',
-                                fit: BoxFit.contain,
-                                volume: 0,
-                                threshold: 0.34,
-                                smoothing: 0.08,
-                              ),
-                              const Positioned(
-                                left: 24,
-                                top: 8,
-                                child: _AlphabetBadge(letter: 'A', color: Color(0xFF8B3FBE)),
-                              ),
-                              const Positioned(
-                                left: 62,
-                                bottom: 8,
-                                child: _AlphabetBadge(letter: 'B', color: Color(0xFFE0317A)),
-                              ),
-                              const Positioned(
-                                right: 62,
-                                top: 8,
-                                child: _AlphabetBadge(letter: 'C', color: Color(0xFFF0B000)),
-                              ),
-                              const Positioned(
-                                right: 18,
-                                bottom: 8,
-                                child: _AlphabetBadge(letter: 'D', color: Color(0xFF2196F3)),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-
-                        // ── Grid container (rounded card panel) ────────────
-                        Expanded(
-                          child: Container(
-                            margin: const EdgeInsets.fromLTRB(10, 0, 10, 10),
-                            decoration: BoxDecoration(
-                              color: const Color.fromARGB(255, 4, 51, 98)
-                                  .withValues(alpha: 0.18),
-                              borderRadius: BorderRadius.circular(24),
-                              border: Border.all(
-                                color: const Color.fromARGB(255, 156, 156, 156)
-                                    .withValues(alpha: 0.55),
-                                width: 1.5,
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: const Color.fromARGB(255, 186, 182, 182)
-                                      .withValues(alpha: 0.08),
-                                  blurRadius: 18,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                            ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(24),
-                              child: _buildGrid(),
-                            ),
-                          ),
-                        ),
+                        searchRow(),
                       ],
                     ),
+                    Positioned(
+                      top: avatarTop,
+                      left: 0,
+                      right: 0,
+                      height: avatarHeight,
+                      child: avatarRow(avatarHeight),
+                    ),
+                    Positioned(
+                      top: panelTop,
+                      left: constraints.maxWidth * 0.08,
+                      right: constraints.maxWidth * 0.08,
+                      bottom: panelBottom,
+                      child: panel(),
+                    ),
                   ],
-                ),
-              ),
-            ],
+                );
+              },
+            ),
           ),
-        ),
-          ],
-        ),
         ),
       ),
     );
@@ -347,20 +432,36 @@ class _AlphabetsScreenState extends State<AlphabetsScreen> {
     }
     return RefreshIndicator(
       onRefresh: () async => _reload(),
-      child: GridView.builder(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(10),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 3,
-          crossAxisSpacing: 8,
-          mainAxisSpacing: 8,
-          childAspectRatio: 0.78,
-        ),
-        itemCount: signs.length,
-        itemBuilder: (context, i) => _AlphabetCard(
-          sign: signs[i],
-          onView: () => _showAlphabetDetails(context, signs[i]),
-        ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          const columns = 3;
+          final cardWidth = (constraints.maxWidth - 22 - 20) / columns;
+          const boardTop = 0.402;
+          final fullHeight = MediaQuery.sizeOf(context).height;
+          const panelTopFraction = boardTop + 0.009;
+          final normalPanelHeight = fullHeight * (0.97 - panelTopFraction);
+          final cardHeight = (normalPanelHeight - 24 - 20) / 2.5;
+          final ratio = cardWidth / cardHeight;
+          final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
+          return GridView.builder(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: EdgeInsets.symmetric(
+              horizontal: 11,
+              vertical: keyboardOpen ? 4 : 12,
+            ),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: columns,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: keyboardOpen ? 8 : 10,
+              childAspectRatio: ratio,
+            ),
+            itemCount: signs.length,
+            itemBuilder: (context, i) => _AlphabetCard(
+              sign: signs[i],
+              onView: () => _showAlphabetDetails(context, signs[i]),
+            ),
+          );
+        },
       ),
     );
   }
@@ -379,9 +480,7 @@ class _AlphabetsScreenState extends State<AlphabetsScreen> {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                      color: const Color.fromARGB(255, 216, 215, 221),
-                      width: 2),
+                  border: Border.all(color: const Color(0xFFBFD7FF), width: 2),
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: Column(
@@ -406,7 +505,13 @@ class _AlphabetsScreenState extends State<AlphabetsScreen> {
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(vertical: 19),
-                      color:  const Color.fromARGB(255, 4, 51, 98),
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [Color(0xFF185FA5), Color(0xFF0B8FFF)],
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                        ),
+                      ),
                       child: Center(
                         child: _TutorialButton(
                           onTap: () {
@@ -446,28 +551,6 @@ class _AlphabetsScreenState extends State<AlphabetsScreen> {
   }
 }
 
-class _AlphabetBadge extends StatelessWidget {
-  final String letter;
-  final Color color;
-
-  const _AlphabetBadge({required this.letter, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      letter,
-      style: TextStyle(
-        color: color,
-        fontSize: 30,
-        fontWeight: FontWeight.w900,
-        shadows: const [
-          Shadow(color: Colors.white, blurRadius: 4, offset: Offset(2, 2)),
-        ],
-      ),
-    );
-  }
-}
-
 // ── Tutorial button ───────────────────────────────────────────────────────────
 class _TutorialButton extends StatelessWidget {
   final VoidCallback onTap;
@@ -477,7 +560,7 @@ class _TutorialButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color:  kVividBlue,
+      color: kActionGreen,
       borderRadius: BorderRadius.circular(999),
       child: InkWell(
         onTap: onTap,
@@ -488,8 +571,7 @@ class _TutorialButton extends StatelessWidget {
           alignment: Alignment.center,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(999),
-            border: Border.all(
-                color: const Color.fromARGB(255, 235, 236, 238), width: 2),
+            border: Border.all(color: Colors.white, width: 2),
           ),
           child: const Text(
             'VIDEO TUTORIAL',
@@ -508,8 +590,16 @@ class _TutorialButton extends StatelessWidget {
 // ── Search field ──────────────────────────────────────────────────────────────
 class _SearchField extends StatefulWidget {
   final TextEditingController controller;
+  final FocusNode focusNode;
+  final bool isSearchMode;
+  final VoidCallback onExitSearch;
 
-  const _SearchField({required this.controller});
+  const _SearchField({
+    required this.controller,
+    required this.focusNode,
+    required this.isSearchMode,
+    required this.onExitSearch,
+  });
 
   @override
   State<_SearchField> createState() => _SearchFieldState();
@@ -542,12 +632,12 @@ class _SearchFieldState extends State<_SearchField> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.black26, width: 1.2),
+        border: Border.all(color: kVividBlue, width: 2.2),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.07),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
+            color: Colors.black.withValues(alpha: 0.22),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
@@ -561,6 +651,7 @@ class _SearchFieldState extends State<_SearchField> {
           Expanded(
             child: TextField(
               controller: widget.controller,
+              focusNode: widget.focusNode,
               style: const TextStyle(color: Colors.black, fontSize: 13),
               decoration: const InputDecoration(
                 hintText: 'Search...',
@@ -572,9 +663,9 @@ class _SearchFieldState extends State<_SearchField> {
               ),
             ),
           ),
-          if (_hasText)
+          if (_hasText || widget.isSearchMode)
             GestureDetector(
-              onTap: () => widget.controller.clear(),
+              onTap: widget.onExitSearch,
               child: const Padding(
                 padding: EdgeInsets.only(right: 10),
                 child: Icon(Icons.close_rounded,
@@ -596,7 +687,7 @@ class _PracticeButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: kGreen,
+      color: kActionGreen,
       borderRadius: BorderRadius.circular(999),
       child: InkWell(
         onTap: onTap,
@@ -607,11 +698,12 @@ class _PracticeButton extends StatelessWidget {
           alignment: Alignment.center,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: Colors.white, width: 2),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.15),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
+                color: Colors.black.withValues(alpha: 0.30),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
               ),
             ],
           ),
@@ -619,7 +711,7 @@ class _PracticeButton extends StatelessWidget {
             'Practice',
             style: TextStyle(
               color: Colors.white,
-              fontSize: 13,
+              fontSize: 16,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -640,13 +732,13 @@ class _AlphabetCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color.fromARGB(255, 156, 38, 38),
-        borderRadius: BorderRadius.circular(5),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(9),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.12),
+            color: Colors.black.withValues(alpha: 0.19),
             blurRadius: 6,
-            offset: const Offset(0, 3),
+            offset: const Offset(4, 3),
           ),
         ],
       ),
@@ -659,8 +751,11 @@ class _AlphabetCard extends StatelessWidget {
               onTap: onView,
               child: Container(
                 width: double.infinity,
-                color: const Color(0xFFF5F8FF),
-                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFDF9F9),
+                  border: Border.all(color: const Color(0xFFD6D6D6), width: 1.2),
+                ),
+                padding: const EdgeInsets.all(1),
                 child: _AlphabetImage(sign: sign, fit: BoxFit.contain),
               ),
             ),
@@ -668,8 +763,8 @@ class _AlphabetCard extends StatelessWidget {
           // footer
           Container(
             width: double.infinity,
-            color: const Color.fromARGB(255, 20, 74, 190),
-            padding: const EdgeInsets.symmetric(vertical: 5),
+            color: const Color.fromARGB(255, 0, 60, 191),
+            padding: const EdgeInsets.fromLTRB(8, 3, 8, 10),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -679,30 +774,38 @@ class _AlphabetCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 13,
+                    fontSize: 16,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 1),
                 GestureDetector(
                   onTap: onView,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
                     decoration: BoxDecoration(
-                      color: kGreen,
+                      color: kActionGreen,
                       borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: Colors.white, width: 2),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.24),
+                          blurRadius: 7,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
                     ),
                     child: const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(Icons.visibility_rounded,
-                            color: Colors.white, size: 9),
-                        SizedBox(width: 3),
+                            color: Colors.white, size: 12),
+                        SizedBox(width: 4),
                         Text(
                           'View',
                           style: TextStyle(
                             color: Colors.white,
-                            fontSize: 9,
+                          fontSize: 11,
                             fontWeight: FontWeight.w900,
                           ),
                         ),
@@ -763,6 +866,41 @@ class _ImageFallback extends StatelessWidget {
       ),
     );
   }
+}
+
+class _AlphabetSticker extends StatelessWidget {
+  final String letter;
+  final Color color;
+  final double angle;
+  final double size;
+
+  const _AlphabetSticker({
+    required this.letter,
+    required this.color,
+    required this.angle,
+    required this.size,
+  });
+
+  @override
+  Widget build(BuildContext context) => Transform.rotate(
+        angle: angle,
+        child: Text(
+          letter,
+          style: TextStyle(
+            color: color,
+            fontSize: size,
+            fontWeight: FontWeight.w900,
+            shadows: [
+              Shadow(
+                color: const Color(0xFF12365A).withValues(alpha: 0.34),
+                offset: const Offset(1.5, 2.5),
+                blurRadius: 4,
+              ),
+              Shadow(color: color.withValues(alpha: 0.28), blurRadius: 6),
+            ],
+          ),
+        ),
+      );
 }
 
 // ── Error state ───────────────────────────────────────────────────────────────
@@ -830,152 +968,4 @@ class _RetryButton extends StatelessWidget {
       ),
     );
   }
-}
-// ── Decorative floating bubbles for the background ──────────────────────────
-// Purely visual, non-interactive layer — sits behind all existing screen
-// content and does not change any other part of the design.
-const List<Color> _bubbleColors = [
-  kVividBlue,
-  kAccent,
-  kGreen,
-  Color(0xFF0B8FFF),
-  Color(0xFF9C27B0),
-];
-
-class _BubbleSpec {
-  final double dx; // horizontal anchor, 0..1 fraction of width
-  final double size;
-  final double speed; // relative rise speed
-  final double phase; // 0..1 start offset so bubbles don't move in sync
-  final double wobble; // horizontal sway amount in logical pixels
-  final Color color;
-  final bool outline; // some bubbles are soft rings instead of filled dots
-
-  const _BubbleSpec({
-    required this.dx,
-    required this.size,
-    required this.speed,
-    required this.phase,
-    required this.wobble,
-    required this.color,
-    required this.outline,
-  });
-}
-
-class _FloatingBubbles extends StatefulWidget {
-  const _FloatingBubbles();
-
-  @override
-  State<_FloatingBubbles> createState() => _FloatingBubblesState();
-}
-
-class _FloatingBubblesState extends State<_FloatingBubbles>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-  late final List<_BubbleSpec> _bubbles;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 28),
-    )..repeat();
-
-    // Fixed seed so the layout is stable across rebuilds/hot reloads
-    // instead of jumping to a new random arrangement every time.
-    final rnd = math.Random(7);
-    _bubbles = List.generate(16, (i) {
-      final color = _bubbleColors[rnd.nextInt(_bubbleColors.length)];
-      return _BubbleSpec(
-        dx: rnd.nextDouble(),
-        size: 14 + rnd.nextDouble() * 46,
-        speed: 0.45 + rnd.nextDouble() * 0.85,
-        phase: rnd.nextDouble(),
-        wobble: 8 + rnd.nextDouble() * 18,
-        color: color,
-        outline: rnd.nextDouble() < 0.4,
-      );
-    });
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final canvasSize = constraints.biggest;
-        return AnimatedBuilder(
-          animation: _controller,
-          builder: (context, _) {
-            return CustomPaint(
-              size: canvasSize,
-              painter: _BubblesPainter(
-                bubbles: _bubbles,
-                progress: _controller.value,
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-}
-
-class _BubblesPainter extends CustomPainter {
-  final List<_BubbleSpec> bubbles;
-  final double progress;
-
-  _BubblesPainter({required this.bubbles, required this.progress});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (size.width <= 0 || size.height <= 0) return;
-
-    for (final b in bubbles) {
-      // t travels 0 -> 1 -> 0 (loops) at each bubble's own speed/offset.
-      final t = (progress * b.speed + b.phase) % 1.0;
-      final y = size.height * (1 - t);
-      final wobbleX = math.sin((t * 2 * math.pi) + b.phase * 10) * b.wobble;
-      final x = size.width * b.dx + wobbleX;
-      final radius = b.size / 2;
-
-      // Fades in near the bottom, fades out near the top so bubbles never
-      // pop in/out abruptly.
-      final envelope = math.sin(math.pi * t).clamp(0.0, 1.0);
-      final opacity = 0.08 + 0.16 * envelope;
-
-      if (b.outline) {
-        final ring = Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.6
-          ..color = b.color.withValues(alpha: opacity * 1.6);
-        canvas.drawCircle(Offset(x, y), radius, ring);
-      } else {
-        final fill = Paint()
-          ..style = PaintingStyle.fill
-          ..color = b.color.withValues(alpha: opacity);
-        canvas.drawCircle(Offset(x, y), radius, fill);
-      }
-
-      // Tiny glossy highlight so bubbles read as bubbles, not flat dots.
-      final highlight = Paint()
-        ..style = PaintingStyle.fill
-        ..color = Colors.white.withValues(alpha: opacity * 1.4);
-      canvas.drawCircle(
-        Offset(x - radius * 0.32, y - radius * 0.32),
-        radius * 0.22,
-        highlight,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _BubblesPainter oldDelegate) =>
-      oldDelegate.progress != progress;
 }

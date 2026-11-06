@@ -7,17 +7,25 @@ import 'package:flutter/services.dart';
 import 'package:panorama_viewer/panorama_viewer.dart';
 import 'package:video_player/video_player.dart';
 
+import '../data/panorama_hotspot_data.dart';
 import '../models/panorama_scene.dart';
 import '../services/api_config.dart';
 import '../services/panorama_service.dart';
 import '../services/video_player_service.dart';
+import 'tutorial_video_screen.dart';
 import '../ui/app_shell.dart';
 import '../utils/url_helper.dart';
 import '../widgets/transparent_sign_video_overlay.dart';
 
 class PanoramaScreen extends StatefulWidget {
   final String userName;
-  const PanoramaScreen({super.key, required this.userName});
+  final String? initialSceneId;
+
+  const PanoramaScreen({
+    super.key,
+    required this.userName,
+    this.initialSceneId,
+  });
 
   @override
   State<PanoramaScreen> createState() => _PanoramaScreenState();
@@ -40,12 +48,6 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
   int _selectedIndex = 0;
   bool _viewerMode = false;
 
-  // The panorama sphere is rendered natively (no WebView / JS engine to
-  // spin up), so the only thing worth waiting on before showing it is the
-  // equirectangular image itself. We precache it and show a small spinner
-  // for that brief moment instead of a "Loading 180 pictures..." page.
-  bool _panoramaLoading = false;
-
   String get _baseUrl {
     final baseUrl = ApiConfig.baseUrl;
     return baseUrl.endsWith('/')
@@ -61,11 +63,20 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
     if (_cachedScenes != null) {
       // Already fetched during an earlier visit this session — resolve
       // instantly (no spinner).
-      _scenes = _cachedScenes!;
-      _sceneFuture = Future.value(_cachedScenes!);
+      // Re-apply the bundled hotspot catalog as cached scene data can predate
+      // the latest local hotspot positions.
+      _sceneFuture = _mergeLocalHotspots(_cachedScenes!);
     } else {
       _sceneFuture = _fetchScenes();
     }
+    _viewerMode = widget.initialSceneId != null;
+  }
+
+  void _selectInitialScene() {
+    final sceneId = widget.initialSceneId;
+    if (sceneId == null) return;
+    final index = _scenes.indexWhere((scene) => scene.id == sceneId);
+    if (index >= 0) _selectedIndex = index;
   }
 
   // Wrapped so that ANY failure here — including a synchronous one thrown
@@ -75,10 +86,37 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
   // and taking the whole app down with it.
   Future<List<PanoramaScene>> _fetchScenes() async {
     try {
-      return await PanoramaService().listPanoramaScenes();
+      final scenesFuture = PanoramaService().listPanoramaScenes();
+      final scenes = await scenesFuture;
+      return _mergeLocalHotspots(scenes);
     } catch (e) {
       throw Exception('Failed to load 180 pictures: $e');
     }
+  }
+
+  Future<List<PanoramaScene>> _mergeLocalHotspots(
+    List<PanoramaScene> scenes,
+  ) async {
+    final hotspotData = await loadPanoramaHotspotData();
+    final normalizedScenes = scenes.map((scene) {
+      if (scene.id != 'testing') return scene;
+      return PanoramaScene(
+        id: 'campus',
+        key: 'campus',
+        title: 'Campus',
+        imageAsset: 'assets/360/Campus.jpg',
+        imageUrl: scene.imageUrl,
+        icon: scene.icon,
+        sortOrder: scene.sortOrder,
+        hotspots: scene.hotspots,
+      );
+    }).toList(growable: false);
+    final mergedScenes = applyPanoramaHotspotData(
+      normalizedScenes,
+      hotspotData,
+    );
+    _cachedScenes = mergedScenes;
+    return mergedScenes;
   }
 
   String _assetUrl(String assetPath) {
@@ -86,7 +124,22 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
     return '$_baseUrl/$cleanPath';
   }
 
+  String _sceneImageAsset(PanoramaScene scene) {
+    switch (scene.id) {
+      case 'classroom':
+        return 'assets/360/Classroom_v2_taller.jpg';
+      case 'school':
+        return 'assets/360/School_blur_fill.jpg';
+      default:
+        return scene.imageAsset;
+    }
+  }
+
+  bool _usesBundledPanorama(PanoramaScene scene) =>
+      _sceneImageAsset(scene).startsWith('assets/360/');
+
   String _imageUrl(PanoramaScene scene) {
+    if (_usesBundledPanorama(scene)) return _assetUrl(_sceneImageAsset(scene));
     if (scene.imageUrl.trim().isNotEmpty) {
       return getOptimizedUrl(scene.imageUrl, width: 1600);
     }
@@ -102,38 +155,27 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
   static const int _maxPanoramaTextureWidth = 2048;
 
   ImageProvider _panoramaTextureProvider(PanoramaScene scene) {
+    if (_usesBundledPanorama(scene)) {
+      return ResizeImage(
+        AssetImage(_sceneImageAsset(scene)),
+        width: _maxPanoramaTextureWidth,
+      );
+    }
     return ResizeImage(
       CachedNetworkImageProvider(_imageUrl(scene)),
       width: _maxPanoramaTextureWidth,
     );
   }
 
-  bool _usesFlatPanorama(PanoramaScene scene) =>
-      scene.id == 'classroom' || scene.id == 'school';
-
-  Future<void> _loadPanorama(int index) async {
-    if (index < 0 || index >= _scenes.length) return;
-    if (!mounted) return;
-    setState(() {
-      _selectedIndex = index;
-      _viewerMode = true;
-      _panoramaLoading = true;
-    });
-
-    // Warm the image cache before swapping the sphere's texture so the
-    // viewer doesn't pop in half-loaded. Flutter's own ImageCache means a
-    // scene visited before this session resolves instantly here.
-    try {
-      await precacheImage(
-        _panoramaTextureProvider(_scenes[index]),
-        context,
-      );
-    } catch (_) {
-      // Swallow — the panorama widget shows its own broken-image state.
-    }
-
-    if (!mounted) return;
-    setState(() => _panoramaLoading = false);
+  void _openPanorama(int index) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PanoramaScreen(
+          userName: widget.userName,
+          initialSceneId: _scenes[index].id,
+        ),
+      ),
+    );
   }
 
   // BENCH.jpg hotspot positions come from backend/data/panorama-scenes.json.
@@ -155,13 +197,20 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
   }
 
   void _showHotspotVideo(PanoramaHotspot hotspot) {
-    showDialog<void>(
-      context: context,
-      barrierColor: Colors.black54,
-      builder: (_) => _PanoramaVideoDialog(
-        title: hotspot.label,
-        videoAsset: hotspot.videoAsset,
-        videoUrl: hotspot.videoUrl,
+    if (hotspot.videoAsset.trim().isEmpty && hotspot.videoUrl.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No video is set for ${hotspot.label} yet.')),
+      );
+      return;
+    }
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => TutorialVideoScreen(
+          title: hotspot.label,
+          videoAsset: hotspot.videoAsset,
+          videoUrl: hotspot.videoUrl,
+        ),
       ),
     );
   }
@@ -190,7 +239,6 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
       _selectedIndex = 0;
       _viewerMode = false;
       _scenes = [];
-      _panoramaLoading = false;
       // Retry/reload means the user explicitly wants fresh data — clear the
       // cache so this next fetch actually happens again.
       _cachedScenes = null;
@@ -208,58 +256,75 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       key: _scaffoldKey,
-      endDrawer: AppMenuDrawer(
+      drawer: AppMenuDrawer(
         userName: widget.userName,
         onClose: () => Navigator.of(context).pop(),
         activeScreen: '180 Pictures',
       ),
-      body: AppBackground(
+      body: ClassroomPageBackground(
+        bannerAsset: 'assets/images/180.png',
+        boardTopFraction: _viewerMode ? 0.16 : 0.28,
+        landscapeBoardTopFraction: _viewerMode ? 0.12 : 0.25,
         child: Stack(
           children: [
-            const Positioned.fill(
-              child: IgnorePointer(
-                child: _FloatingBubbles(),
-              ),
-            ),
             SafeArea(
               child: Column(
                 children: [
                   AppTopBar(
-                    onBack: () {
-                      if (_viewerMode) {
-                        setState(() => _viewerMode = false);
-                      } else {
-                        Navigator.of(context).pop();
-                      }
-                    },
-                    onMenu: () => _scaffoldKey.currentState?.openEndDrawer(),
+                    onBack: _viewerMode
+                        ? () => Navigator.of(context).maybePop()
+                        : null,
+                    onMenu: () => _scaffoldKey.currentState?.openDrawer(),
+                    menuOnLeft: !_viewerMode,
                   ),
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2, bottom: 12),
-                    child: Text(
-                      _viewerMode && _scenes.isNotEmpty
-                          ? _scenes[_selectedIndex].title.toUpperCase()
-                          : '180° PICTURES',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Color(0xFF1500C8),
-                        fontSize: 32,
-                        fontWeight: FontWeight.w900,
+                  if (!_viewerMode) ...[
+                    const SizedBox(height: 4),
+                    SizedBox(
+                      height: MediaQuery.sizeOf(context).height < 500 ? 72 : 120,
+                      width: double.infinity,
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        alignment: Alignment.center,
+                        children: [
+                          Positioned(
+                            left: -(115.0 * 0.10),
+                            bottom: -12,
+                            child: ClassroomBookshelf(
+                              width: MediaQuery.sizeOf(context).height < 500
+                                  ? 92
+                                  : 115,
+                            ),
+                          ),
+                          Transform.translate(
+                            offset: const Offset(0, 10),
+                            child: SizedBox(
+                              width: 240,
+                              child: const TransparentSignVideoOverlay(
+                                videoAsset: 'assets/180.mp4',
+                                fit: BoxFit.contain,
+                                scale: 1,
+                                volume: 0,
+                                threshold: 0.34,
+                                smoothing: 0.08,
+                              ),
+                            ),
+                          ),
+                          const Positioned(
+                            left: 20,
+                            child: Icon(Icons.star_rounded,
+                                color: Color(0xFFFFB800), size: 23),
+                          ),
+                          const Positioned(
+                            right: 20,
+                            child: Icon(Icons.auto_awesome_rounded,
+                                color: Color(0xFF11B7CB), size: 21),
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-                  if (!_viewerMode)
-                    const SizedBox(
-                      height: 120,
-                      width: 240,
-                      child: TransparentSignVideoOverlay(
-                        videoAsset: 'assets/180.mp4',
-                        fit: BoxFit.contain,
-                        volume: 0,
-                        threshold: 0.34,
-                        smoothing: 0.08,
-                      ),
-                    ),
+                    SizedBox(height: MediaQuery.sizeOf(context).height * 0.055),
+                  ] else
+                    const SizedBox(height: 4),
                   Expanded(
                     child: FutureBuilder<List<PanoramaScene>>(
                       future: _sceneFuture,
@@ -292,6 +357,10 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
                           _scenes = scenes;
                           _cachedScenes = scenes;
                         }
+                        if (widget.initialSceneId != null &&
+                            _selectedIndex == 0) {
+                          _selectInitialScene();
+                        }
 
                         if (!_viewerMode) {
                           return _buildCategoryGrid();
@@ -313,26 +382,55 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
   // ── Category landing grid ───────────────────────────────────────────────
   Widget _buildCategoryGrid() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      child: GridView.builder(
-        physics: const BouncingScrollPhysics(),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          crossAxisSpacing: 14,
-          mainAxisSpacing: 14,
-          childAspectRatio: 0.92,
+      padding: EdgeInsets.fromLTRB(
+        MediaQuery.sizeOf(context).width * 0.10,
+        0,
+        MediaQuery.sizeOf(context).width * 0.10,
+        MediaQuery.sizeOf(context).height * 0.045,
+      ),
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color.fromARGB(255, 4, 51, 98).withValues(alpha: 0.18),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: const Color.fromARGB(255, 156, 156, 156)
+                .withValues(alpha: 0.55),
+            width: 1.5,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: const Color.fromARGB(255, 186, 182, 182)
+                  .withValues(alpha: 0.08),
+              blurRadius: 18,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
-        itemCount: _scenes.length,
-        itemBuilder: (context, index) {
-          final scene = _scenes[index];
-          return _PanoramaCategoryCard(
-            title: scene.title,
-            imageUrl: _imageUrl(scene),
-            icon: _sceneIcon(scene),
-            highlighted: index == 0,
-            onView: () => _loadPanorama(index),
-          );
-        },
+        clipBehavior: Clip.antiAlias,
+        child: GridView.builder(
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.all(16),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            crossAxisSpacing: 10,
+            mainAxisSpacing: 10,
+            childAspectRatio: 0.92,
+          ),
+          itemCount: _scenes.length,
+          itemBuilder: (context, index) {
+            final scene = _scenes[index];
+            return _PanoramaCategoryCard(
+              title: scene.title,
+              imageUrl: _imageUrl(scene),
+              imageAsset: _usesBundledPanorama(scene)
+                  ? _sceneImageAsset(scene)
+                  : null,
+              icon: _sceneIcon(scene),
+              highlighted: index == 0,
+              onView: () => _openPanorama(index),
+            );
+          },
+        ),
       ),
     );
   }
@@ -418,31 +516,6 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
     );
   }
 
-  // Classroom and School are wide panorama strips, not equirectangular
-  // sphere photos. Keep them flat so their original proportions stay intact.
-  Widget _buildFlatPanorama(PanoramaScene scene) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final width = math.max(constraints.maxWidth, 1600.0);
-        final aspectRatio = scene.id == 'classroom' ? 6.97 : 7.35;
-        return InteractiveViewer(
-          constrained: false,
-          minScale: 1,
-          maxScale: 4,
-          boundaryMargin: const EdgeInsets.all(80),
-          child: SizedBox(
-            width: width,
-            height: width / aspectRatio,
-            child: Image(
-              image: _panoramaTextureProvider(scene),
-              fit: BoxFit.fill,
-            ),
-          ),
-        );
-      },
-    );
-  }
-
   // ── 180 viewer with hotspots + thumbnail strip ─────────────────────────
   Widget _buildViewer() {
     final scene = _scenes[_selectedIndex];
@@ -460,48 +533,37 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    if (_usesFlatPanorama(scene))
-                      _buildFlatPanorama(scene)
-                    else
-                      PanoramaViewer(
+                    PanoramaViewer(
                         key: ValueKey('panorama-${scene.id}'),
+                        latitude: _panoramaController.getLatitude(),
+                        longitude: _panoramaController.getLongitude(),
+                        zoom: _panoramaController.getZoom(),
                         animSpeed: 0.0,
                         sensorControl: SensorControl.none,
                         panoramaController: _panoramaController,
-                        child: Image(
-                          image: _panoramaTextureProvider(scene),
-                        ),
                         hotspots: [
                           for (var i = 0; i < currentHotspots.length; i++)
                             Hotspot(
                               name: currentHotspots[i].id,
                               latitude: _hotspotPitch(scene, i),
                               longitude: _hotspotYaw(scene, i),
-                              width: 46 *
-                                  (currentHotspots[i].size <= 0
-                                      ? 1
-                                      : currentHotspots[i].size),
-                              height: 46 *
-                                  (currentHotspots[i].size <= 0
-                                      ? 1
-                                      : currentHotspots[i].size),
+                              width: (130 * currentHotspots[i].size)
+                                  .clamp(120.0, 170.0)
+                                  .toDouble(),
+                              height: (110 * currentHotspots[i].size)
+                                  .clamp(104.0, 132.0)
+                                  .toDouble(),
                               widget: _HotspotMarker(
-                                onTap: () =>
-                                    _showHotspotVideo(currentHotspots[i]),
+                                label: currentHotspots[i].label,
+                                onTap: () => _showHotspotVideo(currentHotspots[i]),
                               ),
                             ),
                         ],
-                      ),
-                    if (!_panoramaLoading)
-                      _DragHint(key: ValueKey('hint-${scene.id}')),
-                    if (_panoramaLoading)
-                      Container(
-                        color: Colors.black54,
-                        alignment: Alignment.center,
-                        child: const CircularProgressIndicator(
-                          color: Colors.white,
+                        child: Image(
+                          image: _panoramaTextureProvider(scene),
                         ),
                       ),
+                    _DragHint(key: ValueKey('hint-${scene.id}')),
                   ],
                 ),
               ),
@@ -509,7 +571,7 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
           ),
         ),
         _buildWordsList(currentHotspots),
-        const SizedBox(height: 16),
+        SizedBox(height: MediaQuery.sizeOf(context).height * 0.04),
       ],
     );
   }
@@ -517,36 +579,78 @@ class _PanoramaScreenState extends State<PanoramaScreen> {
 
 // ── Round play-button hotspot marker placed on the sphere ──────────────────
 class _HotspotMarker extends StatelessWidget {
+  final String label;
   final VoidCallback onTap;
 
-  const _HotspotMarker({required this.onTap});
+  const _HotspotMarker({required this.label, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: Colors.black.withValues(alpha: 0.22),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.9),
-            width: 2.4,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.3),
-              blurRadius: 10,
-              offset: const Offset(0, 2),
+      child: SizedBox(
+        width: 160,
+        height: 112,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.transparent,
+                border: Border.all(
+                  color: Colors.white,
+                  width: 2,
+                ),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Colors.black54,
+                    blurRadius: 5,
+                    spreadRadius: 0.5,
+                    offset: Offset(0, 1),
+                  ),
+                ],
+              ),
+              alignment: Alignment.center,
+              child: const Icon(
+                Icons.play_arrow_rounded,
+                color: Colors.white,
+                size: 32,
+              ),
+            ),
+            Positioned(
+              bottom: 0,
+              left: 4,
+              right: 4,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.38),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  child: Text(
+                    label,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      height: 1.1,
+                    ),
+                  ),
+                ),
+              ),
             ),
           ],
-        ),
-        alignment: Alignment.center,
-        child: const Icon(
-          Icons.play_arrow_rounded,
-          color: Colors.white,
-          size: 22,
         ),
       ),
     );
@@ -658,8 +762,7 @@ class _PanoramaVideoDialogState extends State<_PanoramaVideoDialog> {
     } on VideoLoadException catch (_) {
       if (!mounted) return;
       setState(() {
-        _error =
-            'Cannot play this hotspot video.\nPlease restart the backend and try again.';
+        _error = 'Cannot play this video. Please rebuild the app and try again.';
       });
     } catch (_) {
       if (!mounted) return;
@@ -1005,6 +1108,7 @@ class _ErrorState extends StatelessWidget {
 class _PanoramaCategoryCard extends StatelessWidget {
   final String title;
   final String imageUrl;
+  final String? imageAsset;
   final bool highlighted;
   final VoidCallback onView;
   final IconData icon;
@@ -1012,6 +1116,7 @@ class _PanoramaCategoryCard extends StatelessWidget {
   const _PanoramaCategoryCard({
     required this.title,
     required this.imageUrl,
+    this.imageAsset,
     required this.onView,
     required this.icon,
     this.highlighted = false,
@@ -1023,70 +1128,82 @@ class _PanoramaCategoryCard extends StatelessWidget {
       onTap: onView,
       child: Container(
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF11919C), Color(0xFF0A5C68)],
-          ),
-          borderRadius: BorderRadius.circular(18),
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: highlighted ? kAccent : const Color(0xFFAEEAF2),
-            width: highlighted ? 2.6 : 1.6,
+            color: const Color(0xFFBFD7FF),
+            width: 1.5,
           ),
-          boxShadow: [
+          boxShadow: const [
             BoxShadow(
-              color: (highlighted ? kAccent : Colors.black)
-                  .withValues(alpha: highlighted ? 0.4 : 0.18),
-              blurRadius: highlighted ? 18 : 10,
-              spreadRadius: highlighted ? 1 : 0,
-              offset: const Offset(0, 4),
+              color: Color(0x30185FA5),
+              blurRadius: 12,
+              offset: Offset(0, 6),
+            ),
+            BoxShadow(
+              color: Color(0x15000000),
+              blurRadius: 4,
+              offset: Offset(0, 2),
             ),
           ],
         ),
-        clipBehavior: Clip.antiAlias,
-        child: Column(
-          children: [
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: Column(
+            children: [
             Expanded(
               child: Stack(
                 fit: StackFit.expand,
                 children: [
                   // Backing color shows briefly while the crop loads.
-                  Container(color: const Color(0xFF08414A)),
+                  Container(color: const Color(0xFFEFF6FF)),
                   // Fills the whole card — a portion of the photo gets
                   // cropped off (top/bottom or sides) instead of
                   // letterboxing, so the card never shows empty bars.
                   Positioned.fill(
-                    child: CachedNetworkImage(
-                      imageUrl: imageUrl,
-                      fit: BoxFit.cover,
-                      alignment: Alignment.center,
-                      // Thumbnails only need to be a few hundred px wide,
-                      // not the full panorama resolution — this caps how
-                      // large a bitmap gets decoded/cached per card.
-                      memCacheWidth: 480,
-                      fadeInDuration: const Duration(milliseconds: 150),
-                      errorWidget: (_, __, ___) => Container(
-                        color: const Color(0xFF08414A),
-                        alignment: Alignment.center,
-                        child: Icon(
-                          Icons.threesixty_rounded,
-                          color: kAccent.withValues(alpha: 0.8),
-                          size: 36,
-                        ),
-                      ),
-                      placeholder: (_, __) => Container(
-                        color: const Color(0xFF08414A),
-                        alignment: Alignment.center,
-                        child: SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.4,
-                            color: kAccent,
+                    child: imageAsset != null
+                        ? Image.asset(
+                            imageAsset!,
+                            fit: BoxFit.cover,
+                            cacheWidth: 480,
+                            errorBuilder: (_, __, ___) => Container(
+                              color: const Color(0xFFEFF6FF),
+                              alignment: Alignment.center,
+                              child: const Icon(
+                                Icons.threesixty_rounded,
+                                color: Color(0xFF185FA5),
+                                size: 36,
+                              ),
+                            ),
+                          )
+                        : CachedNetworkImage(
+                            imageUrl: imageUrl,
+                            fit: BoxFit.cover,
+                            alignment: Alignment.center,
+                            memCacheWidth: 480,
+                            fadeInDuration: const Duration(milliseconds: 150),
+                            errorWidget: (_, __, ___) => Container(
+                              color: const Color(0xFFEFF6FF),
+                              alignment: Alignment.center,
+                              child: Icon(
+                                Icons.threesixty_rounded,
+                                color: const Color(0xFF185FA5).withValues(alpha: 0.8),
+                                size: 36,
+                              ),
+                            ),
+                            placeholder: (_, __) => Container(
+                              color: const Color(0xFFEFF6FF),
+                              alignment: Alignment.center,
+                              child: const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.4,
+                                  color: Color(0xFF185FA5),
+                                ),
+                              ),
+                            ),
                           ),
-                        ),
-                      ),
-                    ),
                   ),
                   // Category icon badge
                   Positioned(
@@ -1095,20 +1212,17 @@ class _PanoramaCategoryCard extends StatelessWidget {
                     child: Container(
                       padding: const EdgeInsets.all(6),
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [kAccent, Color(0xFF1387C9)],
-                        ),
+                        color: const Color(0xFF185FA5),
                         shape: BoxShape.circle,
                         border: Border.all(
                           color: Colors.white.withValues(alpha: 0.85),
                           width: 1.2,
                         ),
-                        boxShadow: [
+                        boxShadow: const [
                           BoxShadow(
-                            color: kAccent.withValues(alpha: 0.6),
+                            color: Color(0x40185FA5),
                             blurRadius: 8,
+                            offset: Offset(0, 3),
                           ),
                         ],
                       ),
@@ -1120,14 +1234,8 @@ class _PanoramaCategoryCard extends StatelessWidget {
             ),
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Color(0xFF0E7C8C), Color(0xFF0A5C68)],
-                ),
-              ),
+              padding: const EdgeInsets.fromLTRB(8, 3, 8, 10),
+              color: const Color.fromARGB(255, 0, 60, 191),
               child: Column(
                 children: [
                   Text(
@@ -1142,56 +1250,47 @@ class _PanoramaCategoryCard extends StatelessWidget {
                       letterSpacing: 0.2,
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Material(
-                    color: Colors.transparent,
-                    borderRadius: BorderRadius.circular(999),
-                    child: InkWell(
-                      onTap: onView,
-                      borderRadius: BorderRadius.circular(999),
-                      child: Ink(
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFF3EDB7A), Color(0xFF23A147)],
+                  const SizedBox(height: 1),
+                  GestureDetector(
+                    onTap: onView,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF218E3D),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: Colors.white, width: 2),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.24),
+                            blurRadius: 7,
+                            offset: const Offset(0, 2),
                           ),
-                          borderRadius: BorderRadius.circular(999),
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(0xFF34C759)
-                                  .withValues(alpha: 0.55),
-                              blurRadius: 10,
-                              offset: const Offset(0, 3),
+                        ],
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.visibility_rounded,
+                              color: Colors.white, size: 12),
+                          SizedBox(width: 4),
+                          Text(
+                            'View',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w900,
                             ),
-                          ],
-                        ),
-                        child: Container(
-                          width: 96,
-                          height: 30,
-                          alignment: Alignment.center,
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.play_arrow_rounded,
-                                  color: Colors.white, size: 15),
-                              SizedBox(width: 3),
-                              Text(
-                                'View',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                            ],
                           ),
-                        ),
+                        ],
                       ),
                     ),
                   ),
                 ],
               ),
             ),
-          ],
+            ],
+          ),
         ),
       ),
     );

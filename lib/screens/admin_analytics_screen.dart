@@ -40,7 +40,7 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       key: _scaffoldKey,
-      endDrawer: AppMenuDrawer(
+      drawer: AppMenuDrawer(
         userName: widget.userName,
         activeScreen: 'Analytics',
         onClose: () => Navigator.of(context).pop(),
@@ -51,7 +51,7 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
             children: [
               AppTopBar(
                 onBack: () => Navigator.of(context).pop(),
-                onMenu: () => _scaffoldKey.currentState?.openEndDrawer(),
+                onMenu: () => _scaffoldKey.currentState?.openDrawer(),
               ),
               LayoutBuilder(
                 builder: (context, constraints) => Text(

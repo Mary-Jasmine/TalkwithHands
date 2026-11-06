@@ -2,11 +2,12 @@
 
 Expected CSV format:
 
-label,x0,y0,z0,x1,y1,z1,...,x20,y20,z20
+label,hand0_x0,hand0_y0,hand0_z0,...,hand1_x20,hand1_y20,hand1_z20
 A,0.48,0.72,-0.01,...
 
-The 63 landmark values should come from the same MediaPipe/hand_landmarker
-order used by the Flutter app.
+Legacy one-hand CSV rows with 63 coordinates are also accepted and padded
+with an empty second hand. Each hand uses the MediaPipe landmark order used by
+the Flutter app.
 """
 
 from __future__ import annotations
@@ -14,11 +15,17 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 import random
+import re
 from pathlib import Path
 
 
-LANDMARK_VALUE_COUNT = 21 * 3
+HAND_LANDMARK_VALUE_COUNT = 21 * 3
+HAND_FEATURE_COUNT = HAND_LANDMARK_VALUE_COUNT + 2
+LANDMARK_VALUE_COUNT = HAND_LANDMARK_VALUE_COUNT * 2
+MODEL_FEATURE_COUNT = HAND_FEATURE_COUNT * 2
+_ALPHABET_LABEL = re.compile(r"^[A-Z]$")
 
 
 def parse_args() -> argparse.Namespace:
@@ -36,8 +43,11 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def normalize_landmarks(values: list[float]) -> list[float]:
-    points = [values[i : i + 3] for i in range(0, LANDMARK_VALUE_COUNT, 3)]
+def normalize_hand(values: list[float]) -> list[float]:
+    points = [
+        values[i : i + 3]
+        for i in range(0, HAND_LANDMARK_VALUE_COUNT, 3)
+    ]
     wrist = points[0]
     centered = [
         [point[0] - wrist[0], point[1] - wrist[1], point[2] - wrist[2]]
@@ -47,7 +57,12 @@ def normalize_landmarks(values: list[float]) -> list[float]:
         max((x * x + y * y + z * z) ** 0.5 for x, y, z in centered),
         0.0001,
     )
-    return [value / scale for point in centered for value in point]
+    # Keep the wrist's position as well as its normalized shape. This lets
+    # location-sensitive signs such as father/mother remain distinguishable.
+    return [value / scale for point in centered for value in point] + [
+        wrist[0],
+        wrist[1],
+    ]
 
 
 def load_csv(csv_path: Path) -> tuple[list[list[float]], list[str]]:
@@ -67,17 +82,59 @@ def load_csv(csv_path: Path) -> tuple[list[list[float]], list[str]]:
                 continue
             label = row[0].strip()
             raw_values = [float(value) for value in row[1:]]
-            if len(raw_values) != LANDMARK_VALUE_COUNT:
+            if len(raw_values) == HAND_LANDMARK_VALUE_COUNT:
+                first_hand = normalize_hand(raw_values)
+                second_hand = [0.0] * HAND_FEATURE_COUNT
+            elif len(raw_values) == LANDMARK_VALUE_COUNT:
+                first_hand = normalize_hand(raw_values[:HAND_LANDMARK_VALUE_COUNT])
+                second_hand = normalize_hand(raw_values[HAND_LANDMARK_VALUE_COUNT:])
+            else:
                 raise ValueError(
                     f"Row {row_number} has {len(raw_values)} values; "
-                    f"expected {LANDMARK_VALUE_COUNT}."
+                    f"expected {HAND_LANDMARK_VALUE_COUNT} (legacy) or "
+                    f"{LANDMARK_VALUE_COUNT} (two hands)."
                 )
             labels.append(label)
-            features.append(normalize_landmarks(raw_values))
+            features.append(first_hand + second_hand)
 
     if not features:
         raise ValueError("No training rows found.")
     return features, labels
+
+
+def augment_tilted_word_samples(x, y, label_names):
+    """Add modest in-plane hand rotations to word training samples only."""
+    import numpy as np
+
+    augmented_x = [x]
+    augmented_y = [y]
+    extra_count = 0
+    for sample_index, (sample, label_index) in enumerate(zip(x, y)):
+        label = label_names[int(label_index)]
+        if _ALPHABET_LABEL.fullmatch(label) or label.isdigit():
+            continue
+        for _ in range(2):
+            angle = math.radians(random.uniform(-25.0, 25.0))
+            cosine, sine = math.cos(angle), math.sin(angle)
+            rotated = sample.copy()
+            for hand_offset in (0, HAND_FEATURE_COUNT):
+                points = rotated[
+                    hand_offset : hand_offset + HAND_LANDMARK_VALUE_COUNT
+                ].reshape(21, 3)
+                original_x = points[:, 0].copy()
+                original_y = points[:, 1].copy()
+                points[:, 0] = original_x * cosine - original_y * sine
+                points[:, 1] = original_x * sine + original_y * cosine
+            augmented_x.append(rotated.reshape(1, MODEL_FEATURE_COUNT))
+            augmented_y.append(y[sample_index : sample_index + 1])
+            extra_count += 1
+    if extra_count == 0:
+        return x, y, 0
+    return (
+        np.concatenate(augmented_x, axis=0),
+        np.concatenate(augmented_y, axis=0),
+        extra_count,
+    )
 
 
 def main() -> None:
@@ -126,7 +183,7 @@ def main() -> None:
 
     model = tf.keras.Sequential(
         [
-            tf.keras.layers.Input(shape=(LANDMARK_VALUE_COUNT,)),
+            tf.keras.layers.Input(shape=(MODEL_FEATURE_COUNT,)),
             tf.keras.layers.Dense(128, activation="relu"),
             tf.keras.layers.Dropout(0.25),
             tf.keras.layers.Dense(64, activation="relu"),
@@ -147,14 +204,32 @@ def main() -> None:
             restore_best_weights=True,
         )
     ]
+    class_counts = np.bincount(y_train, minlength=len(label_names))
+    mean_class_count = float(np.mean(class_counts))
+    class_weights = {
+        index: min(2.0, float((mean_class_count / max(count, 1)) ** 0.5))
+        for index, count in enumerate(class_counts)
+    }
+    original_x_train, original_y_train = x_train, y_train
+    x_train, y_train, augmented_count = augment_tilted_word_samples(
+        x_train, y_train, label_names
+    )
     history = model.fit(
         x_train,
         y_train,
         validation_data=(x_val, y_val) if len(x_val) else None,
+        class_weight=class_weights,
         epochs=args.epochs,
         batch_size=args.batch_size,
         callbacks=callbacks,
         verbose=2,
+    )
+
+    final_accuracy = float(
+        model.evaluate(original_x_train, original_y_train, verbose=0)[1]
+    )
+    final_val_accuracy = (
+        float(model.evaluate(x_val, y_val, verbose=0)[1]) if len(x_val) else 0.0
     )
 
     converter = tf.lite.TFLiteConverter.from_keras_model(model)
@@ -168,10 +243,18 @@ def main() -> None:
             {
                 "labels": label_names,
                 "samples": len(features),
-                "train_samples": len(x_train),
+                "train_samples": len(original_x_train),
+                "augmented_training_samples": augmented_count,
+                "effective_train_samples": len(x_train),
                 "validation_samples": len(x_val),
-                "final_accuracy": history.history["accuracy"][-1],
-                "final_val_accuracy": history.history["val_accuracy"][-1],
+                "final_accuracy": final_accuracy,
+                "final_val_accuracy": final_val_accuracy,
+                "input_features": MODEL_FEATURE_COUNT,
+                "word_rotation_augmentation_degrees": [-25, 25],
+                "class_weights": {
+                    label_names[index]: weight
+                    for index, weight in class_weights.items()
+                },
             },
             indent=2,
         ),

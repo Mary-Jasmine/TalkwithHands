@@ -42,6 +42,38 @@ class PanoramaService {
     'bench-rock',
   };
 
+  // The classroom and school strips need screen-space positions. Keep these
+  // spots in the app so stale or remote scene data cannot omit their markers.
+  static const Map<String, List<Map<String, dynamic>>>
+      _flatPanoramaSpotDefaults = {
+    'classroom': [
+      {
+        'id': 'dev-classroom-1793432904910000',
+        'key': 'chair',
+        'label': 'Chair',
+        'video_asset': 'assets/180_videos/Chair.mp4',
+        'video_url': '',
+        'yaw': -153.14059738078532,
+        'pitch': -16.634952058611336,
+        'size': 1.2,
+        'sort_order': 0,
+      },
+    ],
+    'school': [
+      {
+        'id': 'dev-school-1793433129263000',
+        'key': 'sky',
+        'label': 'Sky',
+        'video_asset': 'assets/180_videos/Sky.mp4',
+        'video_url': '',
+        'yaw': -24.939501345282714,
+        'pitch': 18.2415310174973,
+        'size': 1.2,
+        'sort_order': 1,
+      },
+    ],
+  };
+
   static const Map<String, dynamic> _roadHotspot = {
     'id': 'bench-road',
     'key': 'road',
@@ -63,11 +95,9 @@ class PanoramaService {
 
   Map<String, dynamic> _applyLocalHotspots(Map<String, dynamic> scene) {
     final raw = scene['hotspots'];
-    if (raw is! List) return scene;
-
     final patched = <dynamic>[];
     var hasRoadHotspot = false;
-    for (final h in raw) {
+    for (final h in raw is List ? raw : const <dynamic>[]) {
       if (h is! Map) {
         patched.add(h);
         continue;
@@ -83,6 +113,15 @@ class PanoramaService {
         hotspot['pitch'] = o.pitch;
       }
       patched.add(hotspot);
+    }
+
+    final sceneId = scene['id']?.toString();
+    for (final fallback in _flatPanoramaSpotDefaults[sceneId] ??
+        const <Map<String, dynamic>>[]) {
+      final alreadyPresent = patched.any(
+        (item) => item is Map && item['id']?.toString() == fallback['id'],
+      );
+      if (!alreadyPresent) patched.add(Map<String, dynamic>.from(fallback));
     }
 
     if (scene['id']?.toString() == 'bench' && !hasRoadHotspot) {

@@ -21,12 +21,16 @@ class LandmarkPainter extends CustomPainter {
   final CameraLensDirection lensDirection;
   final int sensorOrientation;
 
+  /// Clockwise degrees to turn the raw sensor frame upright right now.
+  final int? rotationDegrees;
+
   const LandmarkPainter({
     this.handLandmarks,
     this.handsLandmarks,
     this.previewSize = Size.zero,
     this.lensDirection = CameraLensDirection.front,
     this.sensorOrientation = 0,
+    this.rotationDegrees,
   });
 
   // ─── Cached Paint objects — created once, reused every frame ───────────────
@@ -100,8 +104,10 @@ class LandmarkPainter extends CustomPainter {
 
   double _applyCameraTransform(Canvas canvas, Size size) {
     final raw = _rawPreviewSize;
+    final rot = rotationDegrees ?? sensorOrientation;
     // Scale to fit the rotated preview into the widget
-    final scale = size.width / raw.height;
+    final swap = rot == 90 || rot == 270;
+    final scale = size.width / (swap ? raw.height : raw.width);
     final center = Offset(size.width / 2, size.height / 2);
 
     canvas.translate(center.dx, center.dy);
@@ -111,7 +117,7 @@ class LandmarkPainter extends CustomPainter {
       canvas.scale(-1.0, 1.0);
     }
 
-    canvas.rotate(sensorOrientation * math.pi / 180);
+    canvas.rotate(rot * math.pi / 180);
     canvas.scale(scale);
     return scale;
   }
@@ -130,7 +136,8 @@ class LandmarkPainter extends CustomPainter {
     // Cheap scalar checks first
     if (old.previewSize != previewSize ||
         old.lensDirection != lensDirection ||
-        old.sensorOrientation != sensorOrientation) {
+        old.sensorOrientation != sensorOrientation ||
+        old.rotationDegrees != rotationDegrees) {
       return true;
     }
 

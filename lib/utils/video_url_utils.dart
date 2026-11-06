@@ -100,10 +100,11 @@ bool isBundledVideoAsset(String value) {
   final lower = asset.toLowerCase();
   if (!lower.startsWith('assets/')) return false;
 
-  // The current APK excludes the old video-heavy asset folders, so only
-  // explicitly bundled lesson videos should be attempted through Flutter assets.
+  // The old video-heavy folders are excluded; only explicitly bundled lesson
+  // videos and the panorama lesson clips are included in the app bundle.
   return lower.startsWith('assets/tutorial_videos/') ||
-      lower.startsWith('assets/videos/');
+      lower.startsWith('assets/videos/') ||
+      lower.startsWith('assets/180_videos/');
 }
 
 bool _isLegacyExcludedAsset(String value) {

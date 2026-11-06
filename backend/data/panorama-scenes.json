@@ -90,6 +90,8 @@
         "video_url": "",
         "yaw": 90,
         "pitch": 0,
+        "image_x": 0.12,
+        "image_y": 0.76,
         "size": 1,
         "sort_order": 1
       }
@@ -113,6 +115,8 @@
         "video_url": "",
         "yaw": 90,
         "pitch": 0,
+        "image_x": 0.46,
+        "image_y": 0.72,
         "size": 1,
         "sort_order": 1
       }
@@ -179,10 +183,10 @@
     "hotspots": []
   },
   {
-    "id": "testing",
-    "key": "testing",
-    "title": "Testing",
-    "image_asset": "assets/360/testing.jpg",
+    "id": "campus",
+    "key": "campus",
+    "title": "Campus",
+    "image_asset": "assets/360/Campus.jpg",
     "image_url": "",
     "icon": "route",
     "sort_order": 8,

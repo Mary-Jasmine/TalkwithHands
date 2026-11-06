@@ -78,45 +78,43 @@ class _GameHubScreenState extends State<GameHubScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       key: _scaffoldKey,
-      endDrawer: AppMenuDrawer(
+      drawer: AppMenuDrawer(
         userName: widget.userName,
         onClose: () => Navigator.of(context).pop(),
         activeScreen: 'Game',
       ),
       body: BackgroundMusicRegion(
         track: BackgroundMusicTrack.gameHub,
-        child: _GameStageBackground(
+        child: ClassroomPageBackground(
+          bannerAsset: 'assets/images/gam.png',
+          showBoard: false,
+          backgroundGradient: const [Color(0xFF127BD1), Color(0xFF07070D)],
+          boardTopFraction: 0.40,
+          landscapeBoardTopFraction: 0.51,
         child: Stack(
           children: [
-            const Positioned.fill(
-              child: IgnorePointer(
-                child: _FloatingBubbles(),
-              ),
-            ),
             SafeArea(
           child: Column(
             children: [
               AppTopBar(
-                onBack: () => Navigator.of(context).pop(),
-                onMenu: () => _scaffoldKey.currentState?.openEndDrawer(),
+                onMenu: () => _scaffoldKey.currentState?.openDrawer(),
+                menuOnLeft: true,
               ),
-              const SizedBox(height: 14),
-              const Text(
-                'GAME',
-                style: TextStyle(
-                  color: Color.fromARGB(255, 255, 255, 255),
-                  fontSize: 38,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 0,
-                ),
+              SizedBox(
+                height: MediaQuery.sizeOf(context).height * 0.025,
               ),
-              const SizedBox(height: 34),
               Expanded(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(22, 0, 22, 28),
+                  padding: EdgeInsets.fromLTRB(
+                    MediaQuery.sizeOf(context).width * 0.06,
+                    0,
+                    MediaQuery.sizeOf(context).width * 0.06,
+                    MediaQuery.sizeOf(context).height * 0.04,
+                  ),
                   child: Container(
                     width: double.infinity,
                     padding: const EdgeInsets.fromLTRB(18, 22, 18, 22),
+                    clipBehavior: Clip.antiAlias,
                     decoration: BoxDecoration(
                       color: Colors.white.withOpacity(0.94),
                       borderRadius: BorderRadius.circular(22),
@@ -132,8 +130,9 @@ class _GameHubScreenState extends State<GameHubScreen> {
                         ),
                       ],
                     ),
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
+                    child: SingleChildScrollView(
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
                         final columns = constraints.maxWidth > 520 ? 3 : 2;
                         final spacing = columns == 2 ? 18.0 : 22.0;
                         final itemWidth =
@@ -189,7 +188,8 @@ class _GameHubScreenState extends State<GameHubScreen> {
                             ),
                           ],
                         );
-                      },
+                        },
+                      ),
                     ),
                   ),
                 ),
@@ -244,7 +244,7 @@ class _GameStagePainter extends CustomPainter {
         size.width * 0.5, const Color(0xFF4DE8FF));
     _drawGlowOrb(canvas, Offset(size.width * 0.82, size.height * 0.68),
         size.width * 0.6, const Color(0xFFFF5DA2));
-    _drawGlowOrb(canvas, Offset(size.width * 0.08, size.height * 0.78),
+    _drawGlowOrb(canvas, Offset(size.width * 0.10, size.height * 0.78),
         size.width * 0.45, const Color(0xFF7C4DFF));
 
     // Faint dotted grid reads as a fun "game board" texture without the
@@ -450,27 +450,24 @@ class _GameTile extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 12),
-              Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Colors.black,
-                  fontSize: 21,
-                  height: 1.05,
-                  fontWeight: FontWeight.w900,
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  softWrap: false,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.black, fontSize: 24,
+                      height: 1.05, fontWeight: FontWeight.w900),
                 ),
               ),
               const SizedBox(height: 4),
-              Text(
-                subtitle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Color(0xFF185FA5),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                ),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(subtitle, maxLines: 1, softWrap: false,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Color(0xFF185FA5),
+                        fontSize: 15, fontWeight: FontWeight.w700)),
               ),
             ],
           ),

@@ -6,6 +6,8 @@ class PanoramaHotspot {
   final String videoUrl;
   final double yaw;
   final double pitch;
+  final double? imageX;
+  final double? imageY;
   final double size;
   final int sortOrder;
 
@@ -17,6 +19,8 @@ class PanoramaHotspot {
     required this.videoUrl,
     required this.yaw,
     required this.pitch,
+    this.imageX,
+    this.imageY,
     required this.size,
     required this.sortOrder,
   });
@@ -30,6 +34,8 @@ class PanoramaHotspot {
       videoUrl: (json['video_url'] ?? '').toString(),
       yaw: double.tryParse((json['yaw'] ?? '').toString()) ?? 0,
       pitch: double.tryParse((json['pitch'] ?? '').toString()) ?? 0,
+      imageX: double.tryParse((json['image_x'] ?? '').toString()),
+      imageY: double.tryParse((json['image_y'] ?? '').toString()),
       size: double.tryParse((json['size'] ?? '').toString()) ?? 1,
       sortOrder: int.tryParse((json['sort_order'] ?? '').toString()) ?? 0,
     );
@@ -43,6 +49,8 @@ class PanoramaHotspot {
       'videoUrl': videoUrl,
       'yaw': yaw,
       'pitch': pitch,
+      if (imageX != null) 'imageX': imageX,
+      if (imageY != null) 'imageY': imageY,
       'size': size,
     };
   }

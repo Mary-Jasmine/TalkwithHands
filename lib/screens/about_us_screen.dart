@@ -58,12 +58,14 @@ class AboutUsScreen extends StatelessWidget {
 
     return Scaffold(
       key: scaffoldKey,
-      endDrawer: AppMenuDrawer(
+      drawer: AppMenuDrawer(
         userName: userName,
         onClose: () => Navigator.of(context).pop(),
         activeScreen: 'About us',
       ),
       body: AppBackground(
+        useClassroomBackground: true,
+        backgroundDimOpacity: 0.12,
         child: Column(
           children: [
             Expanded(
@@ -78,10 +80,10 @@ class AboutUsScreen extends StatelessWidget {
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 4),
                           child: AppTopBar(
-                            onBack: () => Navigator.of(context).pop(),
                             onMenu: () =>
-                                scaffoldKey.currentState?.openEndDrawer(),
+                                scaffoldKey.currentState?.openDrawer(),
                             showLogo: false,
+                            menuOnLeft: true,
                           ),
                         ),
                       ),
@@ -99,7 +101,7 @@ class AboutUsScreen extends StatelessWidget {
                         const SizedBox(height: 22),
                         _SectionHeading(
                           icon: Icons.groups_2_rounded,
-                          accent: _kPurple,
+                          accent: const Color.fromARGB(255, 252, 250, 255),
                           title: 'Meet the Team',
                         ),
                         const SizedBox(height: 12),
@@ -134,7 +136,7 @@ class _HeroHeader extends StatelessWidget {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [Color.fromARGB(83, 46, 92, 171), _kAccent],
+            colors: [Color(0xFF28579A), Color(0xFF087F96)],
           ),
         ),
         child: Padding(
@@ -158,7 +160,7 @@ class _HeroHeader extends StatelessWidget {
               const Text(
                 'ABOUT US',
                 style: TextStyle(
-                  color: Color.fromARGB(255, 227, 227, 233),
+                  color: Colors.white,
                   fontSize: 32,
                   fontWeight: FontWeight.w900,
                   letterSpacing: 1.2,
@@ -174,8 +176,8 @@ class _HeroHeader extends StatelessWidget {
               Text(
                 'The people behind Talk with Hands',
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.88),
-                  fontSize: 12.5,
+                  color: Colors.white,
+                  fontSize: 15,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -285,15 +287,15 @@ class _StatChip extends StatelessWidget {
             value,
             style: TextStyle(
               color: _kDeepBlue,
-              fontSize: 14,
+              fontSize: 16,
               fontWeight: FontWeight.w900,
             ),
           ),
           Text(
             label,
             style: const TextStyle(
-              color: Color(0xFF8792A6),
-              fontSize: 9.5,
+              color: Color(0xFF46556D),
+              fontSize: 12,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -386,9 +388,16 @@ class _SectionHeading extends StatelessWidget {
         Text(
           title,
           style: const TextStyle(
-            color: _kDeepBlue,
+            color: Colors.white,
             fontSize: 19,
             fontWeight: FontWeight.w900,
+            shadows: [
+              Shadow(
+                color: Color(0x99071A3F),
+                blurRadius: 4,
+                offset: Offset(0, 1),
+              ),
+            ],
           ),
         ),
         const SizedBox(width: 10),
@@ -442,7 +451,7 @@ class _TeamCarouselState extends State<_TeamCarousel> {
             onPageChanged: (i) => _page.value = i,
             itemBuilder: (context, index) {
               return Padding(
-                padding: const EdgeInsets.only(right: 12),
+              padding: const EdgeInsets.only(right: 12),
                 child: _DeveloperCard(developer: widget.developers[index]),
               );
             },
@@ -549,8 +558,8 @@ class _DeveloperCard extends StatelessWidget {
                     textAlign: TextAlign.center,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      color: _kDeepBlue,
-                      fontSize: 11.5,
+                      color: Colors.black,
+                  fontSize: 13.5,
                       fontWeight: FontWeight.w900,
                       height: 1.15,
                     ),
@@ -569,8 +578,8 @@ class _DeveloperCard extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: roleColor,
-                        fontSize: 9,
+                        color: Colors.black,
+                        fontSize: 11.5,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -599,7 +608,7 @@ class _ReachUsFooter extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color.fromARGB(83, 46, 92, 171), _kAccent],
+          colors: [Color(0xFF28579A), Color(0xFF087F96)],
         ),
       ),
       child: Column(
@@ -614,7 +623,7 @@ class _ReachUsFooter extends StatelessWidget {
                   'Dalubhasaan ng Lunsod ng San Pablo (DLSP)\nSan Pablo City, Laguna',
                   style: TextStyle(
                     color: Colors.white,
-                    fontSize: 12.5,
+                    fontSize: 14,
                     fontWeight: FontWeight.w700,
                     height: 1.4,
                   ),
@@ -628,8 +637,8 @@ class _ReachUsFooter extends StatelessWidget {
           const Text(
             'REACH US',
             style: TextStyle(
-              color: Color.fromARGB(181, 255, 255, 255),
-              fontSize: 11,
+              color: Colors.white,
+              fontSize: 13,
               fontWeight: FontWeight.w800,
               letterSpacing: 2,
             ),
@@ -659,7 +668,7 @@ class _FooterContactRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
-      mainAxisSize: MainAxisSize.min,
+      mainAxisSize: MainAxisSize.max,
       children: [
         Container(
           width: 34,
@@ -671,12 +680,16 @@ class _FooterContactRow extends StatelessWidget {
           child: Icon(icon, color: Colors.white, size: 16),
         ),
         const SizedBox(width: 12),
-        Text(
-          value,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
+        Expanded(
+          child: Text(
+            value,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ),
       ],

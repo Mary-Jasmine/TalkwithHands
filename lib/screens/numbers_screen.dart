@@ -19,6 +19,7 @@ import 'tutorial_video_screen.dart';
 const kVividBlue = Color(0xFF1500C8);
 const kAccent = Color(0xFF11B7CB);
 const kGreen = Color(0xFF34C759);
+const kActionGreen = Color(0xFF218E3D);
 const kCardBlue = Color(0xFF2563EB);
 
 class NumbersScreen extends StatefulWidget {
@@ -36,8 +37,10 @@ class NumbersScreen extends StatefulWidget {
 class _NumbersScreenState extends State<NumbersScreen> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   final _searchController = TextEditingController();
+  final _searchFocusNode = FocusNode();
   late Future<List<NumberSign>> _numberFuture;
   String _query = '';
+  bool _searchMode = false;
 
   Future<void> _recordLearned(NumberSign sign) async {
     try {
@@ -54,15 +57,31 @@ class _NumbersScreenState extends State<NumbersScreen> {
   void initState() {
     super.initState();
     _numberFuture = NumberService().listNumberSigns();
+    _searchFocusNode.addListener(_onSearchFocusChanged);
     _searchController.addListener(
       () =>
           setState(() => _query = _searchController.text.trim().toLowerCase()),
     );
   }
 
+  void _onSearchFocusChanged() {
+    if (!mounted) return;
+    setState(() {
+      if (_searchFocusNode.hasFocus) _searchMode = true;
+    });
+  }
+
+  void _exitSearchMode() {
+    _searchController.clear();
+    _searchFocusNode.unfocus();
+    setState(() => _searchMode = false);
+  }
+
   @override
   void dispose() {
     _searchController.dispose();
+    _searchFocusNode.removeListener(_onSearchFocusChanged);
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
@@ -116,212 +135,286 @@ class _NumbersScreenState extends State<NumbersScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isSearching =
+        _query.isNotEmpty || _searchMode || _searchFocusNode.hasFocus;
     return Scaffold(
       key: _scaffoldKey,
-      endDrawer: AppMenuDrawer(
+      resizeToAvoidBottomInset: false,
+      drawer: AppMenuDrawer(
         userName: widget.userName,
         onClose: () => Navigator.of(context).pop(),
         activeScreen: 'Numbers',
       ),
       body: BackgroundMusicRegion(
         track: BackgroundMusicTrack.page,
-        child: AppBackground(
-        child: Stack(
-          children: [
-            const Positioned.fill(
-              child: IgnorePointer(
-                child: _FloatingBubbles(),
-              ),
-            ),
-            SafeArea(
-          child: Column(
-            children: [
-              AppTopBar(
-                onBack: () => Navigator.of(context).pop(),
-                onMenu: () => _scaffoldKey.currentState?.openEndDrawer(),
-              ),
-              const Padding(
-                padding: EdgeInsets.only(top: 2, bottom: 10),
-                child: Text(
-                  'NUMBERS',
-                  style: TextStyle(
-                    color: Color(0xFF1500C8),
-                    fontSize: 42,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 0,
-                    shadows: [
-                      Shadow(
-                        color: Colors.white,
-                        offset: Offset(3, 4),
-                        blurRadius: 6,
+        child: ClassroomPageBackground(
+          bannerAsset: 'assets/images/num.png',
+          boardTopFraction: 0.402,
+          landscapeBoardTopFraction: 0.34,
+          child: SafeArea(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final mq = MediaQuery.of(context);
+                final landscape = constraints.maxWidth > constraints.maxHeight;
+                final compact = constraints.maxHeight < 620;
+                final horizontalInset =
+                    math.max(20.0, constraints.maxWidth * 0.10).toDouble();
+
+                Widget searchRow() => Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        horizontalInset,
+                        compact ? 16 : 22,
+                        horizontalInset,
+                        compact ? 8 : 14,
                       ),
-                    ],
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Row(
-                  children: [
-                    Expanded(
-                        child: _SearchField(controller: _searchController)),
-                    const SizedBox(width: 12),
-                    _PracticeButton(
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const SignDetectorScreen(
-                            initialMode: DetectionMode.num,
-                            lockMode: true,
-                            captureKind: CaptureKind.image,
-                            title: 'Number Practice',
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: _SearchField(
+                              controller: _searchController,
+                              focusNode: _searchFocusNode,
+                              isSearchMode: isSearching,
+                              onExitSearch: _exitSearchMode,
+                            ),
                           ),
+                          const SizedBox(width: 12),
+                          _PracticeButton(
+                            onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const SignDetectorScreen(
+                                  initialMode: DetectionMode.num,
+                                  lockMode: true,
+                                  captureKind: CaptureKind.image,
+                                  title: 'Number Practice',
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+
+                Widget avatarRow(double avatarHeight) => SizedBox(
+                      height: avatarHeight,
+                      width: double.infinity,
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        alignment: Alignment.center,
+                        children: [
+                          Positioned(
+                            left: -(150.0 * 0.25),
+                            bottom: -12,
+                            child: ClassroomBookshelf(
+                              width: MediaQuery.sizeOf(context).height < 500
+                                  ? 112
+                                  : 150,
+                            ),
+                          ),
+                          const TransparentSignVideoOverlay(
+                            videoAsset: 'assets/Num.mp4',
+                            fit: BoxFit.contain,
+                            scale: 1.30,
+                            volume: 0,
+                            threshold: 0.34,
+                            smoothing: 0.08,
+                          ),
+                          const Positioned(
+                            left: 35,
+                            top: -25,
+                            child: _StickerNumber(
+                              number: '1',
+                              color: Color(0xFF20E8F6),
+                              angle: -0.16,
+                              size: 32,
+                            ),
+                          ),
+                          const Positioned(
+                            right: 54,
+                            top: -40,
+                            child: _StickerNumber(
+                              number: '2',
+                              color: Color(0xFFFFA900),
+                              angle: 0.12,
+                              size: 30,
+                            ),
+                          ),
+                          const Positioned(
+                            right: 16,
+                            bottom: 2,
+                            child: _StickerNumber(
+                              number: '3',
+                              color: Color(0xFFE7A8F6),
+                              angle: -0.10,
+                              size: 32,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+
+                Widget panel() => Container(
+                      decoration: BoxDecoration(
+                        color: const Color.fromARGB(255, 4, 51, 98)
+                            .withValues(alpha: 0.18),
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(
+                          color: const Color.fromARGB(255, 156, 156, 156)
+                              .withValues(alpha: 0.55),
+                          width: 1.5,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color.fromARGB(255, 186, 182, 182)
+                                .withValues(alpha: 0.08),
+                            blurRadius: 18,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: _buildNumberGrid(),
+                    );
+
+                if (landscape) {
+                  final avatarHeight = constraints.maxHeight < 560
+                      ? 76.0
+                      : constraints.maxHeight < 720
+                          ? 108.0
+                          : 140.0;
+                  return Column(
+                    children: [
+                      AppTopBar(
+                        onMenu: () => _scaffoldKey.currentState?.openDrawer(),
+                        menuOnLeft: true,
+                      ),
+                      searchRow(),
+                      if (isSearching)
+                        SizedBox(height: constraints.maxHeight * 0.05)
+                      else ...[
+                        SizedBox(height: constraints.maxHeight * 0.03),
+                        avatarRow(avatarHeight),
+                        SizedBox(height: constraints.maxHeight * 0.05),
+                      ],
+                      Expanded(
+                        child: Padding(
+                          padding: EdgeInsets.fromLTRB(
+                            constraints.maxWidth * 0.10,
+                            0,
+                            constraints.maxWidth * 0.10,
+                            constraints.maxHeight * 0.075,
+                          ),
+                          child: panel(),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 10),
-              const SizedBox(
-                height: 170,
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  alignment: Alignment.center,
-                  children: [
-                    Positioned(
-                      left: 10,
-                      top: 8,
-                      child: _StickerNumber(
-                        number: '1',
-                        color: Color.fromARGB(185, 139, 63, 190),
-                        angle: -0.18,
-                        size: 38,
-                      ),
-                    ),
-                    Positioned(
-                      left: 52,
-                      bottom: 12,
-                      child: _StickerNumber(
-                        number: '2',
-                        color: Color.fromARGB(190, 224, 49, 122),
-                        angle: 0.12,
-                        size: 32,
-                      ),
-                    ),
-                    Positioned(
-                      right: 52,
-                      top: 10,
-                      child: _StickerNumber(
-                        number: '3',
-                        color: Color.fromARGB(192, 33, 149, 243),
-                        angle: 0.15,
-                        size: 30,
-                      ),
-                    ),
-                    Positioned(
-                      right: 10,
-                      bottom: 14,
-                      child: _StickerNumber(
-                        number: '4',
-                        color: Color.fromARGB(201, 67, 160, 72),
-                        angle: -0.10,
-                        size: 34,
-                      ),
-                    ),
-                    Positioned(
-                      left: 38,
-                      top: 6,
-                      child: _FloatingEmoji(emoji: '✨', size: 16),
-                    ),
-                    Positioned(
-                      right: 38,
-                      bottom: 8,
-                      child: _FloatingEmoji(emoji: '💫', size: 14),
-                    ),
-                    _AvatarWithBubble(),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 6),
-              Expanded(
-                child: Container(
-                  margin: const EdgeInsets.fromLTRB(10, 0, 10, 10),
-                  decoration: BoxDecoration(
-                    color: const Color.fromARGB(255, 5, 111, 209)
-                        .withValues(alpha: 0.18),
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(
-                      color: const Color.fromARGB(255, 156, 156, 156)
-                          .withValues(alpha: 0.55),
-                      width: 1.5,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color.fromARGB(255, 186, 182, 182)
-                            .withValues(alpha: 0.08),
-                        blurRadius: 18,
-                        offset: const Offset(0, 4),
-                      ),
                     ],
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(24),
-                    child: FutureBuilder<List<NumberSign>>(
-                      future: _numberFuture,
-                      builder: (context, snapshot) {
-                        if (snapshot.connectionState ==
-                            ConnectionState.waiting) {
-                          return const Center(
-                            child:
-                                CircularProgressIndicator(color: Colors.white),
-                          );
-                        }
-                        if (snapshot.hasError) {
-                          return _ErrorState(
-                            message:
-                                'Cannot load numbers. Make sure the backend is running.',
-                            onRetry: _reload,
-                          );
-                        }
-                        final signs = _filter(snapshot.data ?? const []);
-                        if (signs.isEmpty) {
-                          return _ErrorState(
-                            message: 'No number signs found.',
-                            onRetry: _reload,
-                          );
-                        }
-                        return RefreshIndicator(
-                          onRefresh: () async => _reload(),
-                          child: GridView.builder(
-                            physics: const AlwaysScrollableScrollPhysics(),
-                            padding: const EdgeInsets.all(10),
-                            gridDelegate:
-                                const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 3,
-                              crossAxisSpacing: 8,
-                              mainAxisSpacing: 8,
-                              childAspectRatio: 0.78,
-                            ),
-                            itemCount: signs.length,
-                            itemBuilder: (context, i) => _NumberCard(
-                              sign: signs[i],
-                              onView: () =>
-                                  _showNumberDetails(context, signs[i]),
-                            ),
-                          ),
-                        );
-                      },
+                  );
+                }
+
+                final boardTop = 0.402;
+                final sh = mq.size.height;
+                final topInset = mq.padding.top;
+                final keyboardInset = mq.viewInsets.bottom;
+                final avatarHeight =
+                    (sh * 0.15).clamp(84.0, 150.0).toDouble();
+                final avatarTop = sh * 0.365 - topInset - avatarHeight;
+                final bottomInset = mq.padding.bottom;
+                final panelTop = sh * (boardTop + 0.009) - topInset;
+                final panelBottom = keyboardInset > 0
+                    ? keyboardInset
+                    : math.max(0.0, sh * 0.03 - bottomInset);
+
+                return Stack(
+                  children: [
+                    Column(
+                      children: [
+                        AppTopBar(
+                          onMenu: () => _scaffoldKey.currentState?.openDrawer(),
+                          menuOnLeft: true,
+                        ),
+                        searchRow(),
+                      ],
                     ),
-                  ),
-                ),
-              ),
-            ],
+                    Positioned(
+                      top: avatarTop,
+                      left: 0,
+                      right: 0,
+                      height: avatarHeight,
+                      child: avatarRow(avatarHeight),
+                    ),
+                    Positioned(
+                      top: panelTop,
+                      left: constraints.maxWidth * 0.08,
+                      right: constraints.maxWidth * 0.08,
+                      bottom: panelBottom,
+                      child: panel(),
+                    ),
+                  ],
+                );
+              },
+            ),
           ),
         ),
-          ],
-        ),
-        ),
       ),
+    );
+  }
+
+  Widget _buildNumberGrid() {
+    return FutureBuilder<List<NumberSign>>(
+      future: _numberFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: CircularProgressIndicator(color: Colors.white),
+          );
+        }
+        if (snapshot.hasError) {
+          return _ErrorState(
+            message: 'Cannot load numbers. Make sure the backend is running.',
+            onRetry: _reload,
+          );
+        }
+        final signs = _filter(snapshot.data ?? const []);
+        if (signs.isEmpty) {
+          return _ErrorState(
+            message: 'No number signs found.',
+            onRetry: _reload,
+          );
+        }
+        return RefreshIndicator(
+          onRefresh: () async => _reload(),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final cardWidth = (constraints.maxWidth - 22 - 20) / 3;
+              const boardTop = 0.402;
+              final fullHeight = MediaQuery.sizeOf(context).height;
+              const panelTopFraction = boardTop + 0.009;
+              final normalPanelHeight =
+                  fullHeight * (0.97 - panelTopFraction);
+              final cardHeight = (normalPanelHeight - 24 - 20) / 2.5;
+              final ratio = cardWidth / cardHeight;
+              final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
+              return GridView.builder(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: EdgeInsets.symmetric(
+                  horizontal: 11,
+                  vertical: keyboardOpen ? 4 : 12,
+                ),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  crossAxisSpacing: 10,
+                  mainAxisSpacing: keyboardOpen ? 8 : 10,
+                  childAspectRatio: ratio,
+                ),
+                itemCount: signs.length,
+                itemBuilder: (context, i) => _NumberCard(
+                  sign: signs[i],
+                  onView: () => _showNumberDetails(context, signs[i]),
+                ),
+              );
+            },
+          ),
+        );
+      },
     );
   }
 
@@ -339,10 +432,7 @@ class _NumbersScreenState extends State<NumbersScreen> {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: const Color.fromARGB(255, 216, 215, 221),
-                    width: 2,
-                  ),
+                  border: Border.all(color: const Color(0xFFBFD7FF), width: 2),
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: Column(
@@ -367,7 +457,13 @@ class _NumbersScreenState extends State<NumbersScreen> {
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(vertical: 19),
-                      color: const Color(0xFF11B7CB),
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [Color(0xFF185FA5), Color(0xFF0B8FFF)],
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                        ),
+                      ),
                       child: Center(
                         child: _TutorialButton(
                           onTap: () {
@@ -411,160 +507,38 @@ class _FloatingEmoji extends StatelessWidget {
   const _FloatingEmoji({required this.emoji, required this.size});
   @override
   Widget build(BuildContext context) =>
-      Text(emoji, style: TextStyle(fontSize: size));
-}
-
-// ── Avatar with animated speech bubble ───────────────────────────────────────
-class _AvatarWithBubble extends StatefulWidget {
-  const _AvatarWithBubble();
-
-  @override
-  State<_AvatarWithBubble> createState() => _AvatarWithBubbleState();
-}
-
-class _AvatarWithBubbleState extends State<_AvatarWithBubble>
-    with SingleTickerProviderStateMixin {
-  static const _messages = [
-    "Let's count! 🔢",
-    "1, 2, 3... Go! 🚀",
-    "Sign along! 🤟",
-    "You're doing great! ⭐",
-    "Numbers are fun! 🎉",
-    "Keep practicing! 💪",
-  ];
-
-  int _msgIndex = 0;
-  late final AnimationController _ctrl;
-  late final Animation<double> _scale;
-  late final Animation<double> _opacity;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 350),
-    );
-    _scale = CurvedAnimation(parent: _ctrl, curve: Curves.elasticOut);
-    _opacity = CurvedAnimation(parent: _ctrl, curve: Curves.easeIn);
-    _ctrl.forward();
-    _scheduleCycle();
-  }
-
-  void _scheduleCycle() {
-    Future.delayed(const Duration(seconds: 3), () {
-      if (!mounted) return;
-      // fade out
-      _ctrl.reverse().then((_) {
-        if (!mounted) return;
-        setState(() {
-          _msgIndex = (_msgIndex + 1) % _messages.length;
-        });
-        _ctrl.forward();
-        _scheduleCycle();
-      });
-    });
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: SizedBox(
-        height: 170,
-        child: Stack(
-          clipBehavior: Clip.none,
-          alignment: Alignment.bottomCenter,
-          children: [
-            // speech bubble
-            Positioned(
-              top: 0,
-              child: AnimatedBuilder(
-                animation: _ctrl,
-                builder: (_, child) => Opacity(
-                  opacity: _opacity.value,
-                  child: Transform.scale(
-                    scale: _scale.value,
-                    alignment: Alignment.bottomCenter,
-                    child: child,
-                  ),
-                ),
-                child: CustomPaint(
-                  painter: _BubblePainter(),
-                  child: Container(
-                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-                    constraints: const BoxConstraints(maxWidth: 160),
-                    child: Text(
-                      _messages[_msgIndex],
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF1A3A6B),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            // avatar
-            Positioned(
-              bottom: 0,
-              child: SizedBox(
-                height: 150,
-                width: 240,
-                child: const TransparentSignVideoOverlay(
-                  videoAsset: 'assets/Num.mp4',
-                  fit: BoxFit.contain,
-                  volume: 0,
-                  threshold: 0.34,
-                  smoothing: 0.08,
-                ),
-              ),
+      Text(
+        emoji,
+        style: TextStyle(
+          fontSize: size,
+          shadows: [
+            Shadow(
+              color: const Color(0xFF12365A).withValues(alpha: 0.34),
+              offset: const Offset(1.5, 2.5),
+              blurRadius: 4,
             ),
           ],
         ),
-      ),
-    );
-  }
+      );
 }
 
-class _BubblePainter extends CustomPainter {
+// ── Avatar without a speech balloon ──────────────────────────────────────────
+class _NumberAvatar extends StatelessWidget {
   @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.fill;
-    final borderPaint = Paint()
-      ..color = const Color(0xFFBFD7FF)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5;
-
-    final rr = RRect.fromRectAndRadius(
-      Rect.fromLTWH(0, 0, size.width, size.height - 10),
-      const Radius.circular(14),
-    );
-
-    // tail pointing down
-    final tail = Path()
-      ..moveTo(size.width / 2 - 8, size.height - 10)
-      ..lineTo(size.width / 2, size.height)
-      ..lineTo(size.width / 2 + 8, size.height - 10)
-      ..close();
-
-    canvas.drawRRect(rr, paint);
-    canvas.drawPath(tail, paint);
-    canvas.drawRRect(rr, borderPaint);
-    canvas.drawPath(tail, borderPaint);
-  }
-
-  @override
-  bool shouldRepaint(_) => false;
+  Widget build(BuildContext context) => Center(
+        child: SizedBox(
+          height: 150,
+          width: 240,
+          child: const TransparentSignVideoOverlay(
+            videoAsset: 'assets/Num.mp4',
+            fit: BoxFit.contain,
+            scale: 1.00,
+            volume: 0,
+            threshold: 0.34,
+            smoothing: 0.08,
+          ),
+        ),
+      );
 }
 
 // ── Sticker number ────────────────────────────────────────────────────────────
@@ -590,12 +564,15 @@ class _StickerNumber extends StatelessWidget {
           fontWeight: FontWeight.w900,
           color: color,
           shadows: [
-            const Shadow(
-                color: Colors.white, offset: Offset(2, 2), blurRadius: 4),
             Shadow(
-                color: color.withValues(alpha: 0.4),
-                offset: const Offset(3, 3),
-                blurRadius: 6),
+              color: const Color(0xFF12365A).withValues(alpha: 0.34),
+              offset: const Offset(1.5, 2.5),
+              blurRadius: 4,
+            ),
+            Shadow(
+              color: color.withValues(alpha: 0.28),
+              blurRadius: 6,
+            ),
           ],
         ),
       ),
@@ -610,7 +587,7 @@ class _TutorialButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: const Color.fromARGB(255, 7, 47, 179),
+      color: kActionGreen,
       borderRadius: BorderRadius.circular(999),
       child: InkWell(
         onTap: onTap,
@@ -621,8 +598,7 @@ class _TutorialButton extends StatelessWidget {
           alignment: Alignment.center,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(999),
-            border: Border.all(
-                color: const Color.fromARGB(255, 235, 236, 238), width: 2),
+            border: Border.all(color: Colors.white, width: 2),
           ),
           child: const Text(
             'VIDEO TUTORIAL',
@@ -636,9 +612,43 @@ class _TutorialButton extends StatelessWidget {
 }
 
 // ── Search field ──────────────────────────────────────────────────────────────
-class _SearchField extends StatelessWidget {
+class _SearchField extends StatefulWidget {
   final TextEditingController controller;
-  const _SearchField({required this.controller});
+  final FocusNode focusNode;
+  final bool isSearchMode;
+  final VoidCallback onExitSearch;
+
+  const _SearchField({
+    required this.controller,
+    required this.focusNode,
+    required this.isSearchMode,
+    required this.onExitSearch,
+  });
+
+  @override
+  State<_SearchField> createState() => _SearchFieldState();
+}
+
+class _SearchFieldState extends State<_SearchField> {
+  bool _hasText = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_onTextChanged);
+  }
+
+  void _onTextChanged() {
+    final hasText = widget.controller.text.isNotEmpty;
+    if (hasText != _hasText) setState(() => _hasText = hasText);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_onTextChanged);
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -646,12 +656,12 @@ class _SearchField extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.black26, width: 1.2),
+        border: Border.all(color: kVividBlue, width: 2.2),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.07),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
+            color: Colors.black.withValues(alpha: 0.22),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
@@ -664,7 +674,8 @@ class _SearchField extends StatelessWidget {
           ),
           Expanded(
             child: TextField(
-              controller: controller,
+              controller: widget.controller,
+              focusNode: widget.focusNode,
               keyboardType: TextInputType.number,
               style: const TextStyle(color: Colors.black, fontSize: 13),
               decoration: const InputDecoration(
@@ -677,6 +688,15 @@ class _SearchField extends StatelessWidget {
               ),
             ),
           ),
+          if (_hasText || widget.isSearchMode)
+            GestureDetector(
+              onTap: widget.onExitSearch,
+              child: const Padding(
+                padding: EdgeInsets.only(right: 10),
+                child: Icon(Icons.close_rounded,
+                    color: Color(0xFF9DA4AD), size: 16),
+              ),
+            ),
         ],
       ),
     );
@@ -690,7 +710,7 @@ class _PracticeButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: kGreen,
+      color: kActionGreen,
       borderRadius: BorderRadius.circular(999),
       child: InkWell(
         onTap: onTap,
@@ -701,18 +721,19 @@ class _PracticeButton extends StatelessWidget {
           alignment: Alignment.center,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: Colors.white, width: 2),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.15),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
+                color: Colors.black.withValues(alpha: 0.30),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
               ),
             ],
           ),
           child: const Text(
             'Practice',
             style: TextStyle(
-                color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
+                color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700),
           ),
         ),
       ),
@@ -756,7 +777,7 @@ class _NumberCard extends StatelessWidget {
                     width: 1.2,
                   ),
                 ),
-                padding: const EdgeInsets.all(6),
+                padding: const EdgeInsets.all(1),
                 child: _NumberImage(sign: sign, fit: BoxFit.contain),
               ),
             ),
@@ -765,7 +786,7 @@ class _NumberCard extends StatelessWidget {
           Container(
             width: double.infinity,
             color: const Color.fromARGB(255, 0, 60, 191),
-            padding: const EdgeInsets.symmetric(vertical: 5),
+            padding: const EdgeInsets.fromLTRB(8, 3, 8, 10),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -775,30 +796,39 @@ class _NumberCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 13,
+                  fontSize: 16,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 1),
                 GestureDetector(
                   onTap: onView,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
                     decoration: BoxDecoration(
-                      color: kGreen,
+                      color: kActionGreen,
                       borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: Colors.white, width: 2),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.24),
+                          blurRadius: 7,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
                     ),
                     child: const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(Icons.visibility_rounded,
-                            color: Colors.white, size: 9),
-                        SizedBox(width: 3),
+                            color: Colors.white, size: 12),
+                        SizedBox(width: 4),
                         Text(
                           'View',
                           style: TextStyle(
                             color: Colors.white,
-                            fontSize: 9,
+                            fontSize: 11,
                             fontWeight: FontWeight.w900,
                           ),
                         ),
