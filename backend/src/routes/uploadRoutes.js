@@ -8,8 +8,7 @@ import multer from 'multer';
 
 const router = express.Router();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const projectRoot = path.resolve(__dirname, '../../..');
-const uploadsDir = path.join(projectRoot, 'uploads');
+const uploadsDir = path.resolve(__dirname, '../../uploads');
 
 fs.mkdirSync(uploadsDir, { recursive: true });
 

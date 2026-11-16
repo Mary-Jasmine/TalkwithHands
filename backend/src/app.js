@@ -24,6 +24,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '..');
 const assetsDir = path.resolve(__dirname, '../assets');
 const uploadsDir = path.resolve(__dirname, '../uploads');
+const legacyUploadsDir = path.resolve(__dirname, '../../uploads');
 console.log('Serving assets from:', assetsDir);
 console.log('Assets dir exists:', fs.existsSync(assetsDir));
 
@@ -86,16 +87,18 @@ export function createApp(options = {}) {
       },
     })
   );
+  const uploadStaticOptions = {
+    acceptRanges: true,
+    setHeaders(res) {
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+    },
+  };
   app.use(
     '/uploads',
-    express.static(uploadsDir, {
-      acceptRanges: true,
-      setHeaders(res) {
-        res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Cache-Control', 'public, max-age=86400');
-      },
-    })
+    express.static(uploadsDir, uploadStaticOptions),
+    express.static(legacyUploadsDir, uploadStaticOptions),
   );
 
   app.use('/auth', authRoutes);
