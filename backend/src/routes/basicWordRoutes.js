@@ -10,6 +10,7 @@ const router = express.Router();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.resolve(__dirname, '../../data');
 const basicWordFile = path.join(dataDir, 'basic-words.json');
+const basicWordCategoriesFile = path.join(dataDir, 'basic-word-categories.json');
 const publicCacheKey = 'basic-words:public';
 
 async function readBasicWords() {
@@ -26,6 +27,44 @@ async function writeBasicWords(words) {
   await fs.mkdir(dataDir, { recursive: true });
   await fs.writeFile(basicWordFile, JSON.stringify(words, null, 2));
   await clearCache(publicCacheKey);
+}
+
+async function readBasicWordCategories() {
+  try {
+    const raw = await fs.readFile(basicWordCategoriesFile, 'utf8');
+    const categories = JSON.parse(raw);
+    if (!Array.isArray(categories)) {
+      throw new Error('Invalid basic word categories data.');
+    }
+    return categories.map((category) => String(category).trim()).filter(Boolean);
+  } catch (err) {
+    if (err.code === 'ENOENT') return [];
+    throw err;
+  }
+}
+
+async function writeBasicWordCategories(categories) {
+  await fs.mkdir(dataDir, { recursive: true });
+  await fs.writeFile(
+    basicWordCategoriesFile,
+    JSON.stringify(categories, null, 2),
+  );
+}
+
+async function listBasicWordCategories() {
+  const [storedCategories, words] = await Promise.all([
+    readBasicWordCategories(),
+    readBasicWords(),
+  ]);
+  const categoriesByName = new Map();
+  for (const value of [
+    ...storedCategories,
+    ...words.map((word) => word.category),
+  ]) {
+    const name = String(value || '').trim();
+    if (name) categoriesByName.set(name.toLowerCase(), name);
+  }
+  return [...categoriesByName.values()].sort((a, b) => a.localeCompare(b));
 }
 
 function validateNewBasicWord(payload) {
@@ -47,6 +86,44 @@ function validateNewBasicWord(payload) {
   if (!hasVideo) return 'Add at least one sign video before saving.';
   return null;
 }
+
+router.get('/categories', async (_req, res, next) => {
+  try {
+    res.json(await listBasicWordCategories());
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/categories', async (req, res, next) => {
+  try {
+    const name = String(req.body?.name || '').trim();
+    if (!name) {
+      return res.status(400).json({ message: 'Category name is required.' });
+    }
+    if (name.length > 60) {
+      return res.status(400).json({
+        message: 'Category name must be 60 characters or fewer.',
+      });
+    }
+
+    const categories = await listBasicWordCategories();
+    if (
+      categories.some(
+        (category) => category.toLowerCase() === name.toLowerCase(),
+      )
+    ) {
+      return res.status(409).json({ message: 'This category already exists.' });
+    }
+
+    const storedCategories = await readBasicWordCategories();
+    storedCategories.push(name);
+    await writeBasicWordCategories(storedCategories);
+    res.status(201).json({ name });
+  } catch (err) {
+    next(err);
+  }
+});
 
 router.get('/', async (_req, res, next) => {
   try {
